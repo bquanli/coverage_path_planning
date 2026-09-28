@@ -1,6 +1,9 @@
 add_library(coverage_log INTERFACE)
 add_library(coverage_path_planning::log ALIAS coverage_log)
 target_include_directories(coverage_log INTERFACE "${PROJECT_SOURCE_DIR}/include")
+target_compile_definitions(coverage_log INTERFACE
+    COVERAGE_PATH_PLANNING_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
+)
 target_link_libraries(coverage_log INTERFACE coverage_path_planning::spdlog)
 
 add_library(viz_lib SHARED

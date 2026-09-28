@@ -30,7 +30,12 @@ struct Options
 {
   bool console = true;
   bool file = true;
+#ifdef COVERAGE_PATH_PLANNING_SOURCE_DIR
+  std::string log_directory =
+      std::string(COVERAGE_PATH_PLANNING_SOURCE_DIR) + "/logs";
+#else
   std::string log_directory = "logs";
+#endif
   std::string file_path; // Optional fixed path instead of a new file in logs/.
   bool truncate_file = false;
   spdlog::level::level_enum level = spdlog::level::info;
