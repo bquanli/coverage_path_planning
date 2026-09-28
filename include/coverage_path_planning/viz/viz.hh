@@ -63,7 +63,7 @@ local_path(Points3 points, DrawContext ctx = {});
 // 在 /planning/path 绘制路径：每个 Points3 是一段独立的开放折线，
 // 段间不连线，每段至少两个有限点。空列表清除路径；同步消费所有视图。
 void
-path(std::span<Points3 const> segments, DrawContext ctx = {});
+history_path(Points3 segments, DrawContext ctx = {});
 void
 trajectory(Points3 points, DrawContext ctx = {});
 // Replaces /planning/trajectory with independent closed robot outlines.

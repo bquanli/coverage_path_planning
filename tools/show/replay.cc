@@ -95,8 +95,7 @@ replay(Options const& options,
   }
 
   // 一条路径，所以外层只有一个 Points3。
-  std::array<planning_viz::Points3, 1> path_views{
-      planning_viz::Points3{positions}};
+  planning_viz::Points3 path_views{planning_viz::Points3{positions}};
 
   std::vector<planning_viz::Points3> polygon_views;
   polygon_views.reserve(polygons.size());
@@ -171,7 +170,7 @@ replay(Options const& options,
         }
         if(options.show_trajectory && positions.size() >= 2)
         {
-          planning_viz::path(path_views, ctx);
+          planning_viz::history_path(path_views, ctx);
         }
         next_trajectory_time = std::chrono::steady_clock::now() + 1s;
       }

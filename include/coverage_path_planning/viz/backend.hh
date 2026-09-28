@@ -12,6 +12,7 @@
 #include <mutex>
 #include <optional>
 
+
 namespace planning_viz::detail
 {
 
@@ -25,11 +26,12 @@ public:
 
   void globalPath(Points3, DrawContext);
   void local_path(Points3, DrawContext);
-  void path(std::span<Points3 const>, DrawContext);
+  void history_path(Points3, DrawContext);
   void trajectory(Points3, DrawContext);
   void trajectory_footprints(std::span<Points3 const>, DrawContext);
   void footprint(Points3, DrawContext);
-  void odometry(RobotOdometry const&, DrawContext);
+  void
+  odometry(RobotOdometry const&, DrawContext);
 
   void clearLocalPath(DrawContext);
 
@@ -50,7 +52,7 @@ private:
 
     std::optional<SceneChannel> global_path;
     std::optional<SceneChannel> local_path;
-    std::optional<SceneChannel> path;
+    std::optional<foxglove::messages::PosesInFrameChannel> history_path_channel;
     std::optional<SceneChannel> trajectory;
     std::optional<SceneChannel> footprint;
     std::optional<foxglove::messages::FrameTransformChannel> transform;
@@ -69,15 +71,15 @@ private:
 
   static void
   publish_line(SceneChannel& channel,
-              PublicationState& state,
-              Config const& config,
-              Points3 points,
-              DrawContext ctx,
-              std::string_view entity_id,
-              foxglove::messages::Color color,
-              double width_m,
-              bool closed,
-              char const* operation) noexcept;
+               PublicationState& state,
+               Config const& config,
+               Points3 points,
+               DrawContext ctx,
+               std::string_view entity_id,
+               foxglove::messages::Color color,
+               double width_m,
+               bool closed,
+               char const* operation) noexcept;
 
   static void
   publish_lines(SceneChannel& channel,
@@ -90,6 +92,14 @@ private:
                 double width_m,
                 bool closed,
                 char const* operation) noexcept;
+
+  static void
+  publish_path(foxglove::messages::PosesInFrameChannel& channel,
+               PublicationState& state,
+               Config const& config,
+               Points3 lines,
+               DrawContext ctx,
+               char const* operation);
 
   bool initialized_ = false;
   std::unique_ptr<Resources> resources_;

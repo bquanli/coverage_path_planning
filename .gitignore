@@ -57,7 +57,7 @@ compile_commands.json
 *.log
 *.bak
 *.swp
-
+*.mcap
 # vcpkg
 vcpkg_installed/
 

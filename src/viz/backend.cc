@@ -23,18 +23,19 @@
 #include <string_view>
 #include <utility>
 
+
 namespace planning_viz::detail
 {
 namespace
 {
 
-namespace msg = foxglove::messages;
+namespace fmsg = foxglove::messages;
 using Error = foxglove::FoxgloveError;
 
 // A minimal fallback logger. Replace with the project's logger as needed.
 // Throttles ALL publishing errors together to at most one line per second.
 void
-reportError(char const* operation, char const* message) noexcept
+report_error(char const* operation, char const* message) noexcept
 {
   using namespace std::chrono;
   auto const now =
@@ -53,7 +54,7 @@ reportError(char const* operation, char const* message) noexcept
 }
 
 void
-appendError(std::string& target, char const* operation, char const* message)
+append_error(std::string& target, char const* operation, char const* message)
 {
   if(!target.empty())
   {
@@ -68,7 +69,7 @@ appendError(std::string& target, char const* operation, char const* message)
 // The public init() catches them and returns false with an error string.
 template <typename T>
 T
-takeOrThrow(foxglove::FoxgloveResult<T> result, char const* operation)
+take_or_throw(foxglove::FoxgloveResult<T> result, char const* operation)
 {
   if(!result.has_value())
   {
@@ -92,16 +93,16 @@ close_outputs(std::optional<foxglove::WebSocketServer>& server,
       auto const code = action();
       if(code != Error::Ok)
       {
-        appendError(error, operation, foxglove::strerror(code));
+        append_error(error, operation, foxglove::strerror(code));
       }
     }
     catch(std::exception const& ex)
     {
-      appendError(error, operation, ex.what());
+      append_error(error, operation, ex.what());
     }
     catch(...)
     {
-      appendError(error, operation, "unknown exception");
+      append_error(error, operation, "unknown exception");
     }
   };
 
@@ -118,14 +119,13 @@ close_outputs(std::optional<foxglove::WebSocketServer>& server,
 }
 
 std::uint64_t
-resolveStamp(std::optional<std::uint64_t> stamp)
+resolve_stamp(std::optional<std::uint64_t> stamp)
 {
   if(!stamp)
   {
-    using namespace std::chrono;
-    auto const now =
-        duration_cast<nanoseconds>(system_clock::now().time_since_epoch())
-            .count();
+    auto const now = duration_cast<std::chrono::nanoseconds>(
+                         std::chrono::system_clock::now().time_since_epoch())
+                         .count();
     if(now < 0)
     {
       throw std::invalid_argument("negative timestamp");
@@ -147,7 +147,7 @@ Backend::publish_line(SceneChannel& channel,
                       Points3 points,
                       DrawContext ctx,
                       std::string_view entity_id,
-                      msg::Color color,
+                      fmsg::Color color,
                       double width_m,
                       bool closed,
                       char const* operation) noexcept
@@ -155,17 +155,18 @@ Backend::publish_line(SceneChannel& channel,
   try
   {
     std::lock_guard lock(state.mutex);
-    auto const stamp = resolveStamp(ctx.stamp_ns);
+    auto const stamp = resolve_stamp(ctx.stamp_ns);
     if(state.last_stamp && stamp <= *state.last_stamp)
     {
-      reportError(operation, "timestamp must strictly increase for this topic");
+      report_error(operation,
+                   "timestamp must strictly increase for this topic");
       return;
     }
     std::string_view const frame = ctx.frame_id.empty()
                                        ? std::string_view(config.default_frame)
                                        : ctx.frame_id;
 
-    msg::SceneUpdate message;
+    fmsg::SceneUpdate message;
     try
     {
       message = make_line_update(points,
@@ -178,14 +179,14 @@ Backend::publish_line(SceneChannel& channel,
     }
     catch(std::invalid_argument const& ex)
     {
-      reportError(operation, ex.what());
+      report_error(operation, ex.what());
       message = make_deletion(entity_id, stamp);
     }
 
     auto const error = channel.log(message, stamp);
     if(error != Error::Ok)
     {
-      reportError(operation, foxglove::strerror(error));
+      report_error(operation, foxglove::strerror(error));
     }
     else
     {
@@ -194,11 +195,11 @@ Backend::publish_line(SceneChannel& channel,
   }
   catch(std::exception const& ex)
   {
-    reportError(operation, ex.what());
+    report_error(operation, ex.what());
   }
   catch(...)
   {
-    reportError(operation, "unknown exception");
+    report_error(operation, "unknown exception");
   }
 }
 
@@ -240,25 +241,25 @@ Backend::init(Config const& config, std::string& error)
     auto& r = *candidate;
 
     r.global_path.emplace(
-        takeOrThrow(SceneChannel::create("/planning/global_path", r.context),
-                    "create global_path"));
+        take_or_throw(SceneChannel::create("/planning/global_path", r.context),
+                      "create global_path"));
     r.local_path.emplace(
-        takeOrThrow(SceneChannel::create("/planning/local_path", r.context),
-                    "create local_path"));
-    r.path.emplace(
-        takeOrThrow(SceneChannel::create("/planning/path", r.context),
-                    "create path"));
+        take_or_throw(SceneChannel::create("/planning/local_path", r.context),
+                      "create local_path"));
+    r.history_path_channel.emplace(take_or_throw(
+        fmsg::PosesInFrameChannel::create("/planning/history_path", r.context),
+        "create path"));
     r.trajectory.emplace(
-        takeOrThrow(SceneChannel::create("/planning/trajectory", r.context),
-                    "create trajectory"));
+        take_or_throw(SceneChannel::create("/planning/trajectory", r.context),
+                      "create trajectory"));
     r.footprint.emplace(
-        takeOrThrow(SceneChannel::create("/planning/footprint", r.context),
-                    "create footprint"));
+        take_or_throw(SceneChannel::create("/planning/footprint", r.context),
+                      "create footprint"));
     r.transform.emplace(
-        takeOrThrow(msg::FrameTransformChannel::create("/tf", r.context),
-                    "create transform"));
-    r.odometry.emplace(takeOrThrow(
-        msg::OdometryChannel::create("/planning/odometry", r.context),
+        take_or_throw(fmsg::FrameTransformChannel::create("/tf", r.context),
+                      "create transform"));
+    r.odometry.emplace(take_or_throw(
+        fmsg::OdometryChannel::create("/planning/odometry", r.context),
         "create odometry"));
 
     if(config.mcap_path)
@@ -267,8 +268,8 @@ Backend::init(Config const& config, std::string& error)
       options.context = r.context;
       options.path = *r.config.mcap_path;
       options.truncate = false;
-      r.writer.emplace(takeOrThrow(foxglove::McapWriter::create(options),
-                                   "create mcap writer"));
+      r.writer.emplace(take_or_throw(foxglove::McapWriter::create(options),
+                                     "create mcap writer"));
     }
     if(config.websocket_enabled)
     {
@@ -277,8 +278,8 @@ Backend::init(Config const& config, std::string& error)
       options.host = r.config.host;
       options.port = r.config.port;
       r.server.emplace(
-          takeOrThrow(foxglove::WebSocketServer::create(std::move(options)),
-                      "create websocket server"));
+          take_or_throw(foxglove::WebSocketServer::create(std::move(options)),
+                        "create websocket server"));
     }
 
     resources_ = std::move(candidate);
@@ -331,7 +332,7 @@ Backend::globalPath(Points3 points, DrawContext ctx)
                points,
                ctx,
                "path",
-               msg::Color{0.2, 0.8, 0.3, 1.0},
+               fmsg::Color{0.2, 0.8, 0.3, 1.0},
                0.04,
                false,
                "globalPath");
@@ -351,30 +352,26 @@ Backend::local_path(Points3 points, DrawContext ctx)
                points,
                ctx,
                "path",
-               msg::Color{.r = 1.0, .g = 0.6, .b = 0.1, .a = 1.0},
+               fmsg::Color{.r = 1.0, .g = 0.6, .b = 0.1, .a = 1.0},
                0.05,
                false,
                "localPath");
 }
 
 void
-Backend::path(std::span<Points3 const> segments, DrawContext ctx)
+Backend::history_path(Points3 segments, DrawContext ctx)
 {
   if(!resources_)
   {
     return;
   }
   auto& r = *resources_;
-  publish_lines(*r.path,
-                r.path_state,
-                r.config,
-                segments,
-                ctx,
-                "path",
-                msg::Color{0.2, 0.8, 0.3, 1.0},
-                0.04,
-                false,
-                "path");
+  publish_path(*r.history_path_channel,
+               r.path_state,
+               r.config,
+               segments,
+               ctx,
+               "path");
 }
 
 void
@@ -391,7 +388,7 @@ Backend::trajectory(Points3 points, DrawContext ctx)
                points,
                ctx,
                "trajectory",
-               msg::Color{0.9, 0.7, 0.1, 1.0},
+               fmsg::Color{0.9, 0.7, 0.1, 1.0},
                0.025,
                false,
                "trajectory");
@@ -412,7 +409,7 @@ Backend::trajectory_footprints(std::span<Points3 const> polygons,
                 polygons,
                 ctx,
                 "trajectory",
-                msg::Color{0.9, 0.7, 0.1, 1.0},
+                fmsg::Color{0.9, 0.7, 0.1, 1.0},
                 0.005,
                 true,
                 "trajectoryFootprints");
@@ -425,7 +422,7 @@ Backend::publish_lines(SceneChannel& channel,
                        std::span<Points3 const> lines,
                        DrawContext ctx,
                        std::string_view entity_id,
-                       msg::Color color,
+                       fmsg::Color color,
                        double width_m,
                        bool closed,
                        char const* operation) noexcept
@@ -433,10 +430,10 @@ Backend::publish_lines(SceneChannel& channel,
   try
   {
     std::lock_guard lock(state.mutex);
-    auto const stamp = resolveStamp(ctx.stamp_ns);
+    auto const stamp = resolve_stamp(ctx.stamp_ns);
     if(state.last_stamp && stamp <= *state.last_stamp)
     {
-      reportError(operation, "timestamp must strictly increase");
+      report_error(operation, "timestamp must strictly increase");
       return;
     }
     auto const frame = ctx.frame_id.empty()
@@ -472,7 +469,7 @@ Backend::publish_lines(SceneChannel& channel,
     }
     catch(std::invalid_argument const& ex)
     {
-      reportError(operation, ex.what());
+      report_error(operation, ex.what());
       message = make_deletion(entity_id, stamp);
     }
     auto const error = channel.log(message, stamp);
@@ -482,16 +479,16 @@ Backend::publish_lines(SceneChannel& channel,
     }
     else
     {
-      reportError(operation, foxglove::strerror(error));
+      report_error(operation, foxglove::strerror(error));
     }
   }
   catch(std::exception const& ex)
   {
-    reportError(operation, ex.what());
+    report_error(operation, ex.what());
   }
   catch(...)
   {
-    reportError(operation, "unknown exception");
+    report_error(operation, "unknown exception");
   }
 }
 
@@ -509,7 +506,7 @@ Backend::footprint(Points3 vertices, DrawContext ctx)
                vertices,
                ctx,
                "footprint",
-               msg::Color{0.2, 0.6, 1.0, 1.0},
+               fmsg::Color{0.2, 0.6, 1.0, 1.0},
                0.03,
                true,
                "footprint");
@@ -526,36 +523,36 @@ Backend::odometry(RobotOdometry const& state, DrawContext ctx)
   {
     auto& r = *resources_;
     std::lock_guard lock(r.odometry_state.mutex);
-    auto const stamp = resolveStamp(ctx.stamp_ns);
+    auto const stamp = resolve_stamp(ctx.stamp_ns);
     if(r.odometry_state.last_stamp && stamp <= *r.odometry_state.last_stamp)
     {
-      reportError("odometry", "timestamp must strictly increase");
+      report_error("odometry", "timestamp must strictly increase");
       return;
     }
     if(!state.position.allFinite() || !std::isfinite(state.yaw) ||
        (state.linear_velocity && !std::isfinite(*state.linear_velocity)) ||
        (state.angular_velocity && !std::isfinite(*state.angular_velocity)))
     {
-      reportError("odometry", "non-finite robot state");
+      report_error("odometry", "non-finite robot state");
       return;
     }
 
-    msg::Odometry message;
+    fmsg::Odometry message;
     message.timestamp = to_message_timestamp(stamp);
     message.frame_id = ctx.frame_id.empty() ? r.config.default_frame
                                             : std::string(ctx.frame_id);
     message.body_frame_id = "base_link";
-    msg::Pose pose;
-    pose.position = msg::Vector3{state.position.x(),
-                                 state.position.y(),
-                                 state.position.z()};
-    pose.orientation = msg::Quaternion{0.0,
-                                       0.0,
-                                       std::sin(state.yaw / 2.0),
-                                       std::cos(state.yaw / 2.0)};
+    fmsg::Pose pose;
+    pose.position = fmsg::Vector3{state.position.x(),
+                                  state.position.y(),
+                                  state.position.z()};
+    pose.orientation = fmsg::Quaternion{0.0,
+                                        0.0,
+                                        std::sin(state.yaw / 2.0),
+                                        std::cos(state.yaw / 2.0)};
     message.pose = pose;
 
-    msg::FrameTransform transform;
+    fmsg::FrameTransform transform;
     transform.timestamp = message.timestamp;
     transform.parent_frame_id = message.frame_id;
     transform.child_frame_id = message.body_frame_id;
@@ -564,24 +561,24 @@ Backend::odometry(RobotOdometry const& state, DrawContext ctx)
     auto const transform_error = r.transform->log(transform, stamp);
     if(transform_error != Error::Ok)
     {
-      reportError("transform", foxglove::strerror(transform_error));
+      report_error("transform", foxglove::strerror(transform_error));
       return;
     }
 
     if(state.linear_velocity)
     {
-      message.linear_velocity = msg::Vector3{*state.linear_velocity, 0.0, 0.0};
+      message.linear_velocity = fmsg::Vector3{*state.linear_velocity, 0.0, 0.0};
     }
     if(state.angular_velocity)
     {
       message.angular_velocity =
-          msg::Vector3{0.0, 0.0, *state.angular_velocity};
+          fmsg::Vector3{0.0, 0.0, *state.angular_velocity};
     }
 
     auto const error = r.odometry->log(message, stamp);
     if(error != Error::Ok)
     {
-      reportError("odometry", foxglove::strerror(error));
+      report_error("odometry", foxglove::strerror(error));
     }
     else
     {
@@ -590,7 +587,64 @@ Backend::odometry(RobotOdometry const& state, DrawContext ctx)
   }
   catch(std::exception const& ex)
   {
-    reportError("odometry", ex.what());
+    report_error("odometry", ex.what());
+  }
+}
+
+void
+Backend::publish_path(foxglove::messages::PosesInFrameChannel& channel,
+                      PublicationState& state,
+                      Config const& config,
+                      Points3 poses,
+                      DrawContext ctx,
+                      char const* operation)
+{
+  auto const stamp = resolve_stamp(ctx.stamp_ns);
+  if(poses.empty())
+  {
+    auto const error = channel.log(fmsg::PosesInFrame(), stamp);
+    if(error == Error::Ok)
+    {
+      state.last_stamp = stamp;
+      return;
+    }
+
+    report_error(operation, foxglove::strerror(error));
+    return;
+  }
+
+
+  fmsg::PosesInFrame path;
+  auto const frame = ctx.frame_id.empty()
+                         ? std::string_view(config.default_frame)
+                         : ctx.frame_id;
+  path.frame_id = frame;
+  path.timestamp = to_message_timestamp(stamp);
+  for(auto const& point : poses)
+  {
+    if(!point.allFinite())
+    {
+      throw std::invalid_argument("non-finite point");
+    }
+    fmsg::Pose frame_pose;
+    // frame_pose.frame_id = frame;
+    // frame_pose.timestamp =
+    // ?? 为什么这里错了
+    frame_pose.position = fmsg::Vector3{point.x(), point.y(), 0.0};
+    double const yaw = point.z();
+    // Foxglove 的字段顺序是 x、y、z、w。
+    frame_pose.orientation =
+        fmsg::Quaternion{0.0, 0.0, std::sin(yaw / 2.0), std::cos(yaw / 2.0)};
+    path.poses.push_back(frame_pose);
+  }
+  auto const error = channel.log(path, stamp);
+  if(error == Error::Ok)
+  {
+    state.last_stamp = stamp;
+  }
+  else
+  {
+    report_error(operation, foxglove::strerror(error));
   }
 }
 

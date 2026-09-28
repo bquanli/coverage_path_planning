@@ -42,9 +42,9 @@ local_path(Points3 points, DrawContext ctx)
 }
 
 void
-path(std::span<Points3 const> segments, DrawContext ctx)
+history_path(Points3 segments, DrawContext ctx)
 {
-  backend().path(segments, ctx);
+  backend().history_path(segments, ctx);
 }
 
 void
