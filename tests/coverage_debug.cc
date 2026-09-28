@@ -562,6 +562,12 @@ run(fmsg::SceneUpdate& update)
     }
   }
 
+  fmsg::SceneEntity path_entity;
+  path_entity.id = "path_entity";
+  path_entity.frame_id = "map";
+  path_entity.lifetime = fmsg::Duration{};
+  fmsg::Color path_entity_color = rgba(0.0, 0.0, 1.0, 1.0);
+
   Cell const head = adj.begin()->first;
   std::vector<Cell> path;
   path.push_back(head);
@@ -577,7 +583,6 @@ run(fmsg::SceneUpdate& update)
     Cell const& n1 = adj.at(cur)[1];
 
     Cell nxt{};
-
     // 排除刚刚走过来的 prev
     // 背后的前提非常重要：环中的每个节点度数都是 2。
     /*
@@ -606,7 +611,12 @@ run(fmsg::SceneUpdate& update)
 
     prev = cur;
     cur = nxt;
+    auto const from_point = to_subcell_point(prev.value());
+    auto const to_position = to_subcell_point(nxt);
+    path_entity.arrows.emplace_back(
+        make_arrow(from_point, to_position, path_entity_color));
   }
+  update.entities.emplace_back(std::move(path_entity));
 }
 
 int
@@ -614,7 +624,7 @@ main()
 {
   foxglove::WebSocketServerOptions options;
   options.host = "0.0.0.0";
-  options.port = 8765;
+  options.port = 1977;
 
   auto server_result = foxglove::WebSocketServer::create(std::move(options));
 
