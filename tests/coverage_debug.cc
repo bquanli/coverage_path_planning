@@ -118,19 +118,19 @@ get_direction(Cell const& from, Cell const& to)
 
   if(dr == -1 && dc == 0)
   {
-    return TreeDirection::W;
+    return TreeDirection::N;
   }
   if(dr == 1 && dc == 0)
   {
-    return TreeDirection::E;
+    return TreeDirection::S;
   }
   if(dr == 0 && dc == -1)
   {
-    return TreeDirection::S;
+    return TreeDirection::W;
   }
   if(dr == 0 && dc == 1)
   {
-    return TreeDirection::N;
+    return TreeDirection::E;
   }
 
   throw std::runtime_error("Cells are not adjacent");
@@ -163,7 +163,8 @@ N           NW <-> NE
 S           SW <-> SE
 W           NW <-> SW
 E           NE <-> SE
-// 这里自己一开始没有反应过来，相的是上下左右！实际上，这里的东南西北就是就是上下左右！
+// 这里自己一开始没有反应过来，相的是上下左右！实际上，这里的东南西北就是就是上下左右！这里描述的不上边的方向，而是边的位置！
+// 边在北边，也就是上面。
 */
 std::array<InnerEdge, 4> const inner_edges = {{
     {TreeDirection::N, SubCellDirection::NW, SubCellDirection::NE},
@@ -180,8 +181,18 @@ to_point(Cell cell)
 {
   return fmsg::Point3{
       .x = static_cast<double>(cell.col),
-      .y = static_cast<double>(cell.row),
+      .y = -static_cast<double>(cell.row),
       .z = 0.0,
+  };
+}
+
+fmsg::Point3
+to_subcell_point(Cell const& cell, double z = 0.0)
+{
+  return {
+      .x = cell.col * 0.5 - 0.25,
+      .y = -cell.row * 0.5 + 0.25,
+      .z = z,
   };
 }
 
@@ -306,17 +317,17 @@ make_grid()
   // 网格略低于节点和轨迹，减少重叠。
   constexpr double z = -0.03;
 
-  for(int i = 0; i <= 5; ++i)
+  for(int i = 0; i < 5; ++i)
   {
-    auto const v = static_cast<double>(i);
+    auto const v = static_cast<double>(i) - 1.;
 
-    entity.lines.push_back(make_line(fmsg::Point3{.x = v, .y = 0.25, .z = z},
-                                     fmsg::Point3{.x = v, .y = -5.25, .z = z},
+    entity.lines.push_back(make_line(fmsg::Point3{.x = v, .y = 1.25, .z = z},
+                                     fmsg::Point3{.x = v, .y = -3.25, .z = z},
                                      gray,
                                      1.0));
 
-    entity.lines.push_back(make_line(fmsg::Point3{.x = -0.25, .y = -v, .z = z},
-                                     fmsg::Point3{.x = 5.25, .y = -v, .z = z},
+    entity.lines.push_back(make_line(fmsg::Point3{.x = -1.25, .y = -v, .z = z},
+                                     fmsg::Point3{.x = 3.25, .y = -v, .z = z},
                                      gray,
                                      1.0));
   }
@@ -392,15 +403,10 @@ run(fmsg::SceneUpdate& update)
     auto const& from = free_cells[u.value];
     auto const& to = free_cells[v.value];
     tree_dir[u].insert(get_direction(from, to));
-    tree_dir[v].insert(get_direction(from, to));
-    arrow_entity.arrows.emplace_back(
-        make_arrow(fmsg::Point3{.x = static_cast<double>(from.row),
-                                .y = static_cast<double>(from.col),
-                                .z = 0.0},
-                   fmsg::Point3{.x = static_cast<double>(to.row),
-                                .y = static_cast<double>(to.col),
-                                .z = 0.0},
-                   red));
+    tree_dir[v].insert(get_direction(to, from));
+    auto const from_point = to_point(from);
+    auto const to_position = to_point(to);
+    arrow_entity.arrows.emplace_back(make_arrow(from_point, to_position, red));
   }
   update.entities.emplace_back(std::move(arrow_entity));
 
@@ -431,8 +437,8 @@ run(fmsg::SceneUpdate& update)
       adj.try_emplace(node);
       // A. 在当前位置放置节点标记。
       fmsg::SpherePrimitive sphere;
-      sphere.pose =
-          make_pose(node.row * 0.5 - 0.25, node.col * 0.5 - 0.25, 0.03);
+      auto const point = to_subcell_point(node, 0.03);
+      sphere.pose = make_pose(point.x, point.y, point.z);
       sphere.size = fmsg::Vector3{
           .x = 0.22,
           .y = 0.22,
@@ -442,9 +448,7 @@ run(fmsg::SceneUpdate& update)
 
       // B. 添加行列索引标签。
       fmsg::TextPrimitive text;
-      text.pose = make_pose(node.row * 0.5 - 0.25 + 0.20,
-                            node.col * 0.5 - 0.25 + 0.12,
-                            0.12);
+      text.pose = make_pose(point.x + 0.20, point.y + 0.12, 0.12);
       text.text = "(" + std::to_string(node.row) + ", " +
                   std::to_string(node.col) + ")";
       text.billboard = true;
@@ -474,19 +478,11 @@ run(fmsg::SceneUpdate& update)
         adj[a].push_back(b);
         adj[b].push_back(a);
 
-        edge_entity.lines.emplace_back(make_line(
-            fmsg::Point3{
-                .x = a.row * 0.5 - 0.25,
-                .y = a.col * 0.5 - 0.25,
-                .z = 0.03,
-            },
-            fmsg::Point3{
-                .x = b.row * 0.5 - 0.25,
-                .y = b.col * 0.5 - 0.25,
-                .z = 0.03,
-            },
-            edge_entity_color,
-            2.0));
+
+        edge_entity.lines.emplace_back(make_line(to_subcell_point(a, 0.03),
+                                                 to_subcell_point(b, 0.03),
+                                                 edge_entity_color,
+                                                 2.0));
       }
     }
   }
@@ -553,6 +549,16 @@ run(fmsg::SceneUpdate& update)
 
       adj[ca].push_back(cb);
       adj[cb].push_back(ca);
+    }
+  }
+
+  for(auto const& [node, neighbors] : adj)
+  {
+    if(neighbors.size() != 2)
+    {
+      throw std::runtime_error(
+          "invalid cycle degree at (" + std::to_string(node.row) + ", " +
+          std::to_string(node.col) + "): " + std::to_string(neighbors.size()));
     }
   }
 
