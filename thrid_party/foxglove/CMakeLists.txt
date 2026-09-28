@@ -8,5 +8,5 @@ find_package(
 
 foxglove_sdk_add_cpp_library(
     foxglove_cpp
-    TYPE STATIC
+    TYPE SHARED
 )

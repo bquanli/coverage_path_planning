@@ -1,7 +1,7 @@
 // Contract: init/shutdown never overlap any publishing call.
 
-#include "backend.hh"
-#include "converters.hh"
+#include "coverage_path_planning/viz/backend.hh"
+#include "coverage_path_planning/viz/converters.hh"
 
 #include <foxglove/context.hpp>
 #include <foxglove/error.hpp>

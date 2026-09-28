@@ -1,4 +1,4 @@
-#include "converters.hh"
+#include "coverage_path_planning/viz/converters.hh"
 
 #include <cmath>
 #include <limits>

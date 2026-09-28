@@ -1,4 +1,5 @@
-#include "foxglove_viz/viz.hh"
+#include "coverage_path_planning/viz/viz.hh"
+
 
 #include <array>
 #include <chrono>

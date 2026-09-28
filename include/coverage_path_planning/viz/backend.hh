@@ -1,6 +1,6 @@
 #pragma once
 
-#include "foxglove_viz/viz.hh"
+#include "coverage_path_planning/viz/viz.hh"
 
 #include <foxglove/context.hpp>
 #include <foxglove/messages.hpp>

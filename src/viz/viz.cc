@@ -1,5 +1,6 @@
-#include "foxglove_viz/viz.hh"
-#include "backend.hh"
+#include "coverage_path_planning/viz/viz.hh"
+
+#include "coverage_path_planning/viz/backend.hh"
 
 namespace planning_viz
 {
