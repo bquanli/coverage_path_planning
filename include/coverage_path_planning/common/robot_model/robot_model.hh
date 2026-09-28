@@ -19,4 +19,4 @@ struct RobotConfig
   Footprint footprint;
 };
 
-}
+} // namespace coverage_path_planning

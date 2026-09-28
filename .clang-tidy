@@ -29,6 +29,7 @@ Checks: >
   -readability-math-missing-parentheses,
   -concurrency-mt-unsafe,
   -modernize-use-designated-initializers,
+  -bugprone-empty-catch,
 CheckOptions:
   # 配置认知复杂度（函数的复杂度阈值）
   - key: readability-function-cognitive-complexity.Threshold

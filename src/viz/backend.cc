@@ -11,6 +11,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdint>
 #include <exception>
@@ -80,9 +81,9 @@ takeOrThrow(foxglove::FoxgloveResult<T> result, char const* operation)
 // Used both for initialization rollback and explicit shutdown.
 // Continue to the writer even if stopping the server reports an error.
 void
-closeOutputs(std::optional<foxglove::WebSocketServer>& server,
-             std::optional<foxglove::McapWriter>& writer,
-             std::string& error)
+close_outputs(std::optional<foxglove::WebSocketServer>& server,
+              std::optional<foxglove::McapWriter>& writer,
+              std::string& error)
 {
   auto const attempt = [&](char const* operation, auto&& action)
   {
@@ -132,7 +133,7 @@ resolveStamp(std::optional<std::uint64_t> stamp)
     stamp = static_cast<std::uint64_t>(now);
   }
   // Validate before comparing timestamps or deciding whether to clear geometry.
-  (void)toMessageTimestamp(*stamp);
+  (void)to_message_timestamp(*stamp);
   return *stamp;
 }
 
@@ -140,16 +141,16 @@ resolveStamp(std::optional<std::uint64_t> stamp)
 
 // Synchronous: consumes points and ctx during this call; saves neither view.
 void
-Backend::publishLine(SceneChannel& channel,
-                     PublicationState& state,
-                     Config const& config,
-                     Points3 points,
-                     DrawContext ctx,
-                     std::string_view entity_id,
-                     msg::Color color,
-                     double width_m,
-                     bool closed,
-                     char const* operation) noexcept
+Backend::publish_line(SceneChannel& channel,
+                      PublicationState& state,
+                      Config const& config,
+                      Points3 points,
+                      DrawContext ctx,
+                      std::string_view entity_id,
+                      msg::Color color,
+                      double width_m,
+                      bool closed,
+                      char const* operation) noexcept
 {
   try
   {
@@ -167,18 +168,18 @@ Backend::publishLine(SceneChannel& channel,
     msg::SceneUpdate message;
     try
     {
-      message = makeLineUpdate(points,
-                               entity_id,
-                               frame,
-                               stamp,
-                               color,
-                               width_m,
-                               closed);
+      message = make_line_update(points,
+                                 entity_id,
+                                 frame,
+                                 stamp,
+                                 color,
+                                 width_m,
+                                 closed);
     }
     catch(std::invalid_argument const& ex)
     {
       reportError(operation, ex.what());
-      message = makeDeletion(entity_id, stamp);
+      message = make_deletion(entity_id, stamp);
     }
 
     auto const error = channel.log(message, stamp);
@@ -244,9 +245,21 @@ Backend::init(Config const& config, std::string& error)
     r.local_path.emplace(
         takeOrThrow(SceneChannel::create("/planning/local_path", r.context),
                     "create local_path"));
+    r.path.emplace(
+        takeOrThrow(SceneChannel::create("/planning/path", r.context),
+                    "create path"));
+    r.trajectory.emplace(
+        takeOrThrow(SceneChannel::create("/planning/trajectory", r.context),
+                    "create trajectory"));
     r.footprint.emplace(
         takeOrThrow(SceneChannel::create("/planning/footprint", r.context),
                     "create footprint"));
+    r.transform.emplace(
+        takeOrThrow(msg::FrameTransformChannel::create("/tf", r.context),
+                    "create transform"));
+    r.odometry.emplace(takeOrThrow(
+        msg::OdometryChannel::create("/planning/odometry", r.context),
+        "create odometry"));
 
     if(config.mcap_path)
     {
@@ -283,7 +296,7 @@ Backend::init(Config const& config, std::string& error)
 
   if(candidate)
   {
-    closeOutputs(candidate->server, candidate->writer, error);
+    close_outputs(candidate->server, candidate->writer, error);
   }
   // candidate destruction releases channels, then their Context.
   // A newly created MCAP file is retained, not deleted on failure.
@@ -299,7 +312,7 @@ Backend::shutdown(std::string& error)
   initialized_ = false;
   if(old)
   {
-    closeOutputs(old->server, old->writer, error);
+    close_outputs(old->server, old->writer, error);
   }
   return error.empty();
 }
@@ -312,36 +325,174 @@ Backend::globalPath(Points3 points, DrawContext ctx)
     return;
   }
   auto& r = *resources_;
-  publishLine(*r.global_path,
-              r.global_path_state,
-              r.config,
-              points,
-              ctx,
-              "path",
-              msg::Color{0.2, 0.8, 0.3, 1.0},
-              0.04,
-              false,
-              "globalPath");
+  publish_line(*r.global_path,
+               r.global_path_state,
+               r.config,
+               points,
+               ctx,
+               "path",
+               msg::Color{0.2, 0.8, 0.3, 1.0},
+               0.04,
+               false,
+               "globalPath");
 }
 
 void
-Backend::localPath(Points3 points, DrawContext ctx)
+Backend::local_path(Points3 points, DrawContext ctx)
 {
   if(!resources_)
   {
     return;
   }
   auto& r = *resources_;
-  publishLine(*r.local_path,
-              r.local_path_state,
-              r.config,
-              points,
-              ctx,
-              "path",
-              msg::Color{.r = 1.0, .g = 0.6, .b = 0.1, .a = 1.0},
-              0.05,
-              false,
-              "localPath");
+  publish_line(*r.local_path,
+               r.local_path_state,
+               r.config,
+               points,
+               ctx,
+               "path",
+               msg::Color{.r = 1.0, .g = 0.6, .b = 0.1, .a = 1.0},
+               0.05,
+               false,
+               "localPath");
+}
+
+void
+Backend::path(std::span<Points3 const> segments, DrawContext ctx)
+{
+  if(!resources_)
+  {
+    return;
+  }
+  auto& r = *resources_;
+  publish_lines(*r.path,
+                r.path_state,
+                r.config,
+                segments,
+                ctx,
+                "path",
+                msg::Color{0.2, 0.8, 0.3, 1.0},
+                0.04,
+                false,
+                "path");
+}
+
+void
+Backend::trajectory(Points3 points, DrawContext ctx)
+{
+  if(!resources_)
+  {
+    return;
+  }
+  auto& r = *resources_;
+  publish_line(*r.trajectory,
+               r.trajectory_state,
+               r.config,
+               points,
+               ctx,
+               "trajectory",
+               msg::Color{0.9, 0.7, 0.1, 1.0},
+               0.025,
+               false,
+               "trajectory");
+}
+
+void
+Backend::trajectory_footprints(std::span<Points3 const> polygons,
+                               DrawContext ctx)
+{
+  if(!resources_)
+  {
+    return;
+  }
+  auto& r = *resources_;
+  publish_lines(*r.trajectory,
+                r.trajectory_state,
+                r.config,
+                polygons,
+                ctx,
+                "trajectory",
+                msg::Color{0.9, 0.7, 0.1, 1.0},
+                0.005,
+                true,
+                "trajectoryFootprints");
+}
+
+void
+Backend::publish_lines(SceneChannel& channel,
+                       PublicationState& state,
+                       Config const& config,
+                       std::span<Points3 const> lines,
+                       DrawContext ctx,
+                       std::string_view entity_id,
+                       msg::Color color,
+                       double width_m,
+                       bool closed,
+                       char const* operation) noexcept
+{
+  try
+  {
+    std::lock_guard lock(state.mutex);
+    auto const stamp = resolveStamp(ctx.stamp_ns);
+    if(state.last_stamp && stamp <= *state.last_stamp)
+    {
+      reportError(operation, "timestamp must strictly increase");
+      return;
+    }
+    auto const frame = ctx.frame_id.empty()
+                           ? std::string_view(config.default_frame)
+                           : ctx.frame_id;
+    auto message = make_deletion(entity_id, stamp);
+    try
+    {
+      for(auto const points : lines)
+      {
+        if(points.empty())
+        {
+          throw std::invalid_argument("empty line; clearing previous geometry");
+        }
+        auto outline = make_line_update(points,
+                                        entity_id,
+                                        frame,
+                                        stamp,
+                                        color,
+                                        width_m,
+                                        closed);
+        if(message.entities.empty())
+        {
+          message = std::move(outline);
+          message.entities.front().lines.reserve(lines.size());
+        }
+        else
+        {
+          message.entities.front().lines.push_back(
+              std::move(outline.entities.front().lines.front()));
+        }
+      }
+    }
+    catch(std::invalid_argument const& ex)
+    {
+      reportError(operation, ex.what());
+      message = make_deletion(entity_id, stamp);
+    }
+    auto const error = channel.log(message, stamp);
+    if(error == Error::Ok)
+    {
+      state.last_stamp = stamp;
+    }
+    else
+    {
+      reportError(operation, foxglove::strerror(error));
+    }
+  }
+  catch(std::exception const& ex)
+  {
+    reportError(operation, ex.what());
+  }
+  catch(...)
+  {
+    reportError(operation, "unknown exception");
+  }
 }
 
 void
@@ -352,16 +503,95 @@ Backend::footprint(Points3 vertices, DrawContext ctx)
     return;
   }
   auto& r = *resources_;
-  publishLine(*r.footprint,
-              r.footprint_state,
-              r.config,
-              vertices,
-              ctx,
-              "footprint",
-              msg::Color{0.2, 0.6, 1.0, 1.0},
-              0.03,
-              true,
-              "footprint");
+  publish_line(*r.footprint,
+               r.footprint_state,
+               r.config,
+               vertices,
+               ctx,
+               "footprint",
+               msg::Color{0.2, 0.6, 1.0, 1.0},
+               0.03,
+               true,
+               "footprint");
+}
+
+void
+Backend::odometry(RobotOdometry const& state, DrawContext ctx)
+{
+  if(!resources_)
+  {
+    return;
+  }
+  try
+  {
+    auto& r = *resources_;
+    std::lock_guard lock(r.odometry_state.mutex);
+    auto const stamp = resolveStamp(ctx.stamp_ns);
+    if(r.odometry_state.last_stamp && stamp <= *r.odometry_state.last_stamp)
+    {
+      reportError("odometry", "timestamp must strictly increase");
+      return;
+    }
+    if(!state.position.allFinite() || !std::isfinite(state.yaw) ||
+       (state.linear_velocity && !std::isfinite(*state.linear_velocity)) ||
+       (state.angular_velocity && !std::isfinite(*state.angular_velocity)))
+    {
+      reportError("odometry", "non-finite robot state");
+      return;
+    }
+
+    msg::Odometry message;
+    message.timestamp = to_message_timestamp(stamp);
+    message.frame_id = ctx.frame_id.empty() ? r.config.default_frame
+                                            : std::string(ctx.frame_id);
+    message.body_frame_id = "base_link";
+    msg::Pose pose;
+    pose.position = msg::Vector3{state.position.x(),
+                                 state.position.y(),
+                                 state.position.z()};
+    pose.orientation = msg::Quaternion{0.0,
+                                       0.0,
+                                       std::sin(state.yaw / 2.0),
+                                       std::cos(state.yaw / 2.0)};
+    message.pose = pose;
+
+    msg::FrameTransform transform;
+    transform.timestamp = message.timestamp;
+    transform.parent_frame_id = message.frame_id;
+    transform.child_frame_id = message.body_frame_id;
+    transform.translation = pose.position;
+    transform.rotation = pose.orientation;
+    auto const transform_error = r.transform->log(transform, stamp);
+    if(transform_error != Error::Ok)
+    {
+      reportError("transform", foxglove::strerror(transform_error));
+      return;
+    }
+
+    if(state.linear_velocity)
+    {
+      message.linear_velocity = msg::Vector3{*state.linear_velocity, 0.0, 0.0};
+    }
+    if(state.angular_velocity)
+    {
+      message.angular_velocity =
+          msg::Vector3{0.0, 0.0, *state.angular_velocity};
+    }
+
+    auto const error = r.odometry->log(message, stamp);
+    if(error != Error::Ok)
+    {
+      reportError("odometry", foxglove::strerror(error));
+    }
+    else
+    {
+      r.odometry_state.last_stamp = stamp;
+    }
+  }
+  catch(std::exception const& ex)
+  {
+    reportError("odometry", ex.what());
+  }
 }
 
 void
@@ -369,7 +599,7 @@ Backend::clearLocalPath(DrawContext ctx)
 {
   // Empty input is handled as MATCHING_ID deletion by publishLine().
   // Use a timestamp later than the entity being removed.
-  localPath(Points3{}, ctx);
+  local_path(Points3{}, ctx);
 }
 
 } // namespace planning_viz::detail

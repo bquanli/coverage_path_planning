@@ -3,6 +3,8 @@
 
 #include "coverage_path_planning/common/robot_model/robot_config_yaml.hh"
 
+#include <filesystem>
+
 namespace coverage_path_planning
 {
 
@@ -16,8 +18,9 @@ RobotModelHelper::instance()
 
 RobotModelHelper::RobotModelHelper()
 {
-  auto config =
-      YAML::LoadFile("/workspace/coverage_path_planning/data/robot.yaml");
+  auto const path = std::filesystem::path(COVERAGE_PATH_PLANNING_SOURCE_DIR) /
+                    "data/robot.yaml";
+  auto config = YAML::LoadFile(path.string());
   log::info("RobotConfig:{}", YAML::Dump(config));
   robot_config_ = config.as<RobotConfig>();
 }

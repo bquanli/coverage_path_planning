@@ -1,0 +1,20 @@
+# Relative paths are resolved from the project root.
+log_file: data/current_pos.log
+
+replay:
+  # 调整的是固定的帧的间隔，并非是自己所理解的跳过一些frame...
+  speed: 0.0 # 0 = fixed frame rate; 1 = original timing, capped by frame_rate_hz
+  frame_rate_hz: 10.0
+  loop: true # Restart at the end until Ctrl-C
+  start_delay_seconds: 3.0 # Time to connect Foxglove before replay
+  footprint_spacing_m: 0.6 # Straight-line spacing; the entire log is retained
+  footprint_yaw_step_deg: 5.0 # Heading changes reduce spacing; also shows in-place turns
+  show_footprint: false
+  show_trajectory: true
+
+foxglove:
+  websocket: true
+  host: 127.0.0.1
+  port: 1997
+  frame_id: map
+  mcap_path: null # Example: recordings/show.mcap

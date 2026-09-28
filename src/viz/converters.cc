@@ -11,7 +11,7 @@ namespace planning_viz::detail
 namespace msg = foxglove::messages;
 
 msg::Timestamp
-toMessageTimestamp(std::uint64_t stamp_ns)
+to_message_timestamp(std::uint64_t stamp_ns)
 {
   constexpr std::uint64_t ns_per_second = 1'000'000'000;
   auto const seconds = stamp_ns / ns_per_second;
@@ -25,10 +25,10 @@ toMessageTimestamp(std::uint64_t stamp_ns)
 }
 
 msg::SceneUpdate
-makeDeletion(std::string_view entity_id, std::uint64_t stamp_ns)
+make_deletion(std::string_view entity_id, std::uint64_t stamp_ns)
 {
   msg::SceneEntityDeletion deletion;
-  deletion.timestamp = toMessageTimestamp(stamp_ns);
+  deletion.timestamp = to_message_timestamp(stamp_ns);
   deletion.type =
       msg::SceneEntityDeletion::SceneEntityDeletionType::MATCHING_ID;
   deletion.id = std::string(entity_id);
@@ -39,18 +39,18 @@ makeDeletion(std::string_view entity_id, std::uint64_t stamp_ns)
 }
 
 msg::SceneUpdate
-makeLineUpdate(Points3 points,
-               std::string_view entity_id,
-               std::string_view frame_id,
-               std::uint64_t stamp_ns,
-               msg::Color color,
-               double width_m,
-               bool closed)
+make_line_update(Points3 points,
+                 std::string_view entity_id,
+                 std::string_view frame_id,
+                 std::uint64_t stamp_ns,
+                 msg::Color color,
+                 double width_m,
+                 bool closed)
 {
-  auto const timestamp = toMessageTimestamp(stamp_ns);
+  auto const timestamp = to_message_timestamp(stamp_ns);
   if(points.empty())
   {
-    return makeDeletion(entity_id, stamp_ns);
+    return make_deletion(entity_id, stamp_ns);
   }
   if(points.size() < (closed ? 3U : 2U))
   {

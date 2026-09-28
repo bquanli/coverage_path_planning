@@ -24,8 +24,12 @@ public:
   shutdown(std::string& error);
 
   void globalPath(Points3, DrawContext);
-  void localPath(Points3, DrawContext);
+  void local_path(Points3, DrawContext);
+  void path(std::span<Points3 const>, DrawContext);
+  void trajectory(Points3, DrawContext);
+  void trajectory_footprints(std::span<Points3 const>, DrawContext);
   void footprint(Points3, DrawContext);
+  void odometry(RobotOdometry const&, DrawContext);
 
   void clearLocalPath(DrawContext);
 
@@ -46,18 +50,25 @@ private:
 
     std::optional<SceneChannel> global_path;
     std::optional<SceneChannel> local_path;
+    std::optional<SceneChannel> path;
+    std::optional<SceneChannel> trajectory;
     std::optional<SceneChannel> footprint;
+    std::optional<foxglove::messages::FrameTransformChannel> transform;
+    std::optional<foxglove::messages::OdometryChannel> odometry;
 
     std::optional<foxglove::McapWriter> writer;
     std::optional<foxglove::WebSocketServer> server;
 
     PublicationState global_path_state;
     PublicationState local_path_state;
+    PublicationState path_state;
+    PublicationState trajectory_state;
     PublicationState footprint_state;
+    PublicationState odometry_state;
   };
 
   static void
-  publishLine(SceneChannel& channel,
+  publish_line(SceneChannel& channel,
               PublicationState& state,
               Config const& config,
               Points3 points,
@@ -67,6 +78,18 @@ private:
               double width_m,
               bool closed,
               char const* operation) noexcept;
+
+  static void
+  publish_lines(SceneChannel& channel,
+                PublicationState& state,
+                Config const& config,
+                std::span<Points3 const> lines,
+                DrawContext ctx,
+                std::string_view entity_id,
+                foxglove::messages::Color color,
+                double width_m,
+                bool closed,
+                char const* operation) noexcept;
 
   bool initialized_ = false;
   std::unique_ptr<Resources> resources_;

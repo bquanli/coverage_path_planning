@@ -38,13 +38,37 @@ global_path(Points3 points, DrawContext ctx)
 void
 local_path(Points3 points, DrawContext ctx)
 {
-  backend().localPath(points, ctx);
+  backend().local_path(points, ctx);
+}
+
+void
+path(std::span<Points3 const> segments, DrawContext ctx)
+{
+  backend().path(segments, ctx);
+}
+
+void
+trajectory(Points3 points, DrawContext ctx)
+{
+  backend().trajectory(points, ctx);
+}
+
+void
+trajectory_footprints(std::span<Points3 const> polygons, DrawContext ctx)
+{
+  backend().trajectory_footprints(polygons, ctx);
 }
 
 void
 footprint(Points3 vertices, DrawContext ctx)
 {
   backend().footprint(vertices, ctx);
+}
+
+void
+odometry(RobotOdometry const& state, DrawContext ctx)
+{
+  backend().odometry(state, ctx);
 }
 
 void

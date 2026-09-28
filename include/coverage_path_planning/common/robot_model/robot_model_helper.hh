@@ -11,8 +11,14 @@ public:
   static RobotModelHelper const&
   instance();
 
+  [[nodiscard]] RobotConfig const&
+  config() const noexcept
+  {
+    return robot_config_;
+  }
+
 private:
   RobotModelHelper();
   RobotConfig robot_config_;
 };
-}
+} // namespace coverage_path_planning
