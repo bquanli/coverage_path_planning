@@ -3,6 +3,7 @@
 #include <foxglove/messages.hpp>
 #include <foxglove/websocket.hpp>
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cstdint>
@@ -302,35 +303,73 @@ make_arrow(fmsg::Point3 const& a,
   return arrow;
 }
 
-// ---------- 4. 构造背景参考网格 ----------
+// ---------- 4. 构造覆盖算法单元的矩形网格及其 2×2 子格 ----------
 
 fmsg::SceneEntity
-make_grid()
+make_grid(std::vector<Cell> const& cells)
 {
   fmsg::SceneEntity entity;
   entity.id = "grid";
   entity.frame_id = "map";
   entity.lifetime = fmsg::Duration{};
 
-  auto const gray = rgba(0.55, 0.55, 0.55, 0.5);
+  if(cells.empty())
+  {
+    return entity;
+  }
+
+  auto const cell_color = rgba(0.45, 0.45, 0.45, 0.85);
+  auto const subcell_color = rgba(0.65, 0.65, 0.65, 0.5);
 
   // 网格略低于节点和轨迹，减少重叠。
   constexpr double z = -0.03;
 
-  for(int i = 0; i < 5; ++i)
+  auto const add_line = [&](double x1,
+                            double y1,
+                            double x2,
+                            double y2,
+                            fmsg::Color const& color,
+                            double width) {
+    entity.lines.push_back(make_line(fmsg::Point3{.x = x1, .y = y1, .z = z},
+                                     fmsg::Point3{.x = x2, .y = y2, .z = z},
+                                     color,
+                                     width));
+  };
+
+  // 用 free_cells 的行列范围确定完整矩形，包括其中未占用的大格。
+  int min_row = cells.front().row;
+  int max_row = cells.front().row;
+  int min_col = cells.front().col;
+  int max_col = cells.front().col;
+  for(auto const& cell : cells)
   {
-    auto const v = static_cast<double>(i) - 1.;
-
-    entity.lines.push_back(make_line(fmsg::Point3{.x = v, .y = 1.25, .z = z},
-                                     fmsg::Point3{.x = v, .y = -3.25, .z = z},
-                                     gray,
-                                     1.0));
-
-    entity.lines.push_back(make_line(fmsg::Point3{.x = -1.25, .y = -v, .z = z},
-                                     fmsg::Point3{.x = 3.25, .y = -v, .z = z},
-                                     gray,
-                                     1.0));
+    min_row = std::min(min_row, cell.row);
+    max_row = std::max(max_row, cell.row);
+    min_col = std::min(min_col, cell.col);
+    max_col = std::max(max_col, cell.col);
   }
+
+  auto const top_left = to_point(Cell{.row = min_row, .col = min_col});
+  auto const bottom_right = to_point(Cell{.row = max_row, .col = max_col});
+  double const left = top_left.x - 0.5;
+  double const right = bottom_right.x + 0.5;
+  double const top = top_left.y + 0.5;
+  double const bottom = bottom_right.y - 0.5;
+
+  // 整行、整列画线：粗线是大格边界，居中的细线将大格分成四个小格。
+  for(double x = left; x < right; x += 1.0)
+  {
+    add_line(x, top, x, bottom, cell_color, 2.0);
+    add_line(x + 0.5, top, x + 0.5, bottom, subcell_color, 1.0);
+  }
+  add_line(right, top, right, bottom, cell_color, 2.0);
+
+  for(double y = top; y > bottom; y -= 1.0)
+  {
+    add_line(left, y, right, y, cell_color, 2.0);
+    add_line(left, y - 0.5, right, y - 0.5, subcell_color, 1.0);
+  }
+  add_line(left, bottom, right, bottom, cell_color, 2.0);
 
   return entity;
 }
@@ -648,11 +687,11 @@ main()
 
   // 图形是静态的，构造一次即可。
   fmsg::SceneUpdate update;
-  update.entities.push_back(make_grid());
+  update.entities.push_back(make_grid(free_cells));
   update.entities.push_back(make_cycle(free_cells));
   run(update);
 
-  std::cout << "Listening on port 8765\n";
+  std::cout << "Listening on port：" << options.port << '\n';
 
   // 教学示例每秒重发，便于客户端晚连接或重新连接。
   while(true)
