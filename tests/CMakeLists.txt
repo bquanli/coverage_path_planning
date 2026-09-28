@@ -1,5 +1,5 @@
-  add_executable(coverage_debug coverage_debug.cc)
-  target_link_libraries(coverage_debug
-      PRIVATE
-      foxglove_cpp
-  )
+add_executable(stc_debug stc_debug.cc)
+target_link_libraries(stc_debug
+    PRIVATE
+    foxglove_cpp
+)
