@@ -22,3 +22,4 @@ add_library(coverage_path_planning::threads ALIAS coverage_threads)
 target_link_libraries(coverage_threads INTERFACE Threads::Threads)
 
 add_subdirectory(foxglove)
+add_subdirectory(ppmd)
