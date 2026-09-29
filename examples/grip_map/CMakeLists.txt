@@ -1,0 +1,4 @@
+find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs)
+add_executable(gridmap_to_polygon gridmap_to_polygon.cc)
+target_include_directories(gridmap_to_polygon PRIVATE ${OpenCV_INCLUDE_DIRS})
+target_link_libraries(gridmap_to_polygon PRIVATE opencv_core opencv_imgproc opencv_imgcodecs)

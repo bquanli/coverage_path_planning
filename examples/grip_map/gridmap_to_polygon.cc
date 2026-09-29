@@ -33,9 +33,16 @@ make_gridmap()
   cv::Mat map(480, 720, CV_8UC1, cv::Scalar(127));
   cv::rectangle(map, {20, 20}, {699, 459}, cv::Scalar(0), cv::FILLED);
   // Concave main room and a disconnected room to the right.
-  Ring const main_room{{40, 40}, {440, 40}, {440, 180}, {510, 180},
-                       {510, 435}, {40, 435}, {40, 300}, {100, 300},
-                       {100, 200}, {40, 200}};
+  Ring const main_room{{40, 40},
+                       {440, 40},
+                       {440, 180},
+                       {510, 180},
+                       {510, 435},
+                       {40, 435},
+                       {40, 300},
+                       {100, 300},
+                       {100, 200},
+                       {40, 200}};
   cv::fillPoly(map, std::vector<Ring>{main_room}, cv::Scalar(255));
   cv::rectangle(map, {550, 50}, {675, 425}, cv::Scalar(255), cv::FILLED);
   // Internal obstacles become holes of their respective free-space polygons.
@@ -61,7 +68,8 @@ simplify_ring(Ring const& contour, bool hole)
   // outer rings are counterclockwise, holes are clockwise.
   if((cv::contourArea(ring, true) > 0.0) != hole)
   {
-    std::reverse(ring.begin(), ring.end());
+    // std::reverse(ring.begin(), ring.end());
+    std::ranges::reverse(ring);
   }
   return ring;
 }
@@ -73,8 +81,11 @@ extract_polygons(cv::Mat const& free_mask)
   std::vector<cv::Vec4i> hierarchy;
   // CCOMP groups each outer boundary with its immediate holes, retaining
   // disconnected regions (and free islands within obstacles) as outer rings.
-  cv::findContours(free_mask.clone(), contours, hierarchy,
-                   cv::RETR_CCOMP, cv::CHAIN_APPROX_SIMPLE);
+  cv::findContours(free_mask.clone(),
+                   contours,
+                   hierarchy,
+                   cv::RETR_CCOMP,
+                   cv::CHAIN_APPROX_SIMPLE);
   std::vector<Polygon> polygons;
   for(std::size_t i = 0; i < contours.size(); ++i)
   {
@@ -90,9 +101,14 @@ extract_polygons(cv::Mat const& free_mask)
     polygons.push_back(std::move(polygon));
   }
   // Stable labels: largest free-space region first.
-  std::sort(polygons.begin(), polygons.end(), [](auto const& a, auto const& b) {
-    return cv::contourArea(a.outer) > cv::contourArea(b.outer);
-  });
+  // std::sort(polygons.begin(),
+  //           polygons.end(),
+  //           [](auto const& a, auto const& b)
+  //           { return cv::contourArea(a.outer) > cv::contourArea(b.outer); });
+  std::ranges::stable_sort(
+      polygons,
+      [](auto const& a, auto const& b)
+      { return cv::contourArea(a.outer) > cv::contourArea(b.outer); });
   return polygons;
 }
 
@@ -116,19 +132,19 @@ write_ring(cv::FileStorage& file, Ring const& ring, int height)
 
 void
 save_polygons(std::filesystem::path const& path,
-              std::vector<Polygon> const& polygons, cv::Size size)
+              std::vector<Polygon> const& polygons,
+              cv::Size size)
 {
-  cv::FileStorage file(path.string(), cv::FileStorage::WRITE |
-                                      cv::FileStorage::FORMAT_JSON);
+  cv::FileStorage file(path.string(),
+                       cv::FileStorage::WRITE | cv::FileStorage::FORMAT_JSON);
   if(!file.isOpened())
   {
     throw std::runtime_error("Cannot write " + path.string());
   }
-  file << "width" << size.width << "height" << size.height
-       << "resolution_m" << resolution
-       << "origin_m" << "[:" << origin_x << origin_y << "]"
-       << "epsilon_pixels" << epsilon_pixels
-       << "rings_closed_implicitly" << 1 << "polygons" << "[";
+  file << "width" << size.width << "height" << size.height << "resolution_m"
+       << resolution << "origin_m" << "[:" << origin_x << origin_y << "]"
+       << "epsilon_pixels" << epsilon_pixels << "rings_closed_implicitly" << 1
+       << "polygons" << "[";
   for(auto const& polygon : polygons)
   {
     file << "{" << "outer";
@@ -144,7 +160,7 @@ save_polygons(std::filesystem::path const& path,
 }
 
 void
-draw_ring(cv::Mat& image, Ring const& ring, cv::Scalar color)
+draw_ring(cv::Mat& image, Ring const& ring, cv::Scalar const& color)
 {
   cv::polylines(image, std::vector<Ring>{ring}, true, color, 2, cv::LINE_AA);
   for(auto const& vertex : ring)
@@ -170,22 +186,42 @@ make_preview(cv::Mat const& map, std::vector<Polygon> const& polygons)
       draw_ring(overlay, hole, hole_color);
     }
     auto const box = cv::boundingRect(polygon.outer);
-    cv::putText(overlay, "P" + std::to_string(i), {box.x + 12, box.y + 28},
-                cv::FONT_HERSHEY_SIMPLEX, 0.65, outer_color, 2, cv::LINE_AA);
+    cv::putText(overlay,
+                "P" + std::to_string(i),
+                {box.x + 12, box.y + 28},
+                cv::FONT_HERSHEY_SIMPLEX,
+                0.65,
+                outer_color,
+                2,
+                cv::LINE_AA);
   }
-  cv::Mat preview(map.rows + 105, map.cols * 2 + 30, CV_8UC3,
+  cv::Mat preview(map.rows + 105,
+                  map.cols * 2 + 30,
+                  CV_8UC3,
                   cv::Scalar(248, 248, 248));
   original.copyTo(preview(cv::Rect(10, 50, map.cols, map.rows)));
   overlay.copyTo(preview(cv::Rect(map.cols + 20, 50, map.cols, map.rows)));
-  auto label = [&](std::string const& text, cv::Point position, cv::Scalar color) {
-    cv::putText(preview, text, position, cv::FONT_HERSHEY_SIMPLEX,
-                0.62, color, 1, cv::LINE_AA);
+  auto label =
+      [&](std::string const& text, cv::Point position, cv::Scalar color)
+  {
+    cv::putText(preview,
+                text,
+                position,
+                cv::FONT_HERSHEY_SIMPLEX,
+                0.62,
+                std::move(color),
+                1,
+                cv::LINE_AA);
   };
   label("Input gridmap", {20, 32}, cv::Scalar(40, 40, 40));
-  label("Extracted free-space polygons", {map.cols + 30, 32}, cv::Scalar(40, 40, 40));
-  label("White: free   Black: occupied   Gray: unknown", {20, map.rows + 82},
+  label("Extracted free-space polygons",
+        {map.cols + 30, 32},
         cv::Scalar(40, 40, 40));
-  label("Teal: outer   Orange: holes   Dots: vertices", {map.cols + 30, map.rows + 82},
+  label("White: free   Black: occupied   Gray: unknown",
+        {20, map.rows + 82},
+        cv::Scalar(40, 40, 40));
+  label("Teal: outer   Orange: holes   Dots: vertices",
+        {map.cols + 30, map.rows + 82},
         cv::Scalar(40, 40, 40));
   return preview;
 }
@@ -198,7 +234,7 @@ save_image(std::filesystem::path const& path, cv::Mat const& image)
     throw std::runtime_error("Cannot write " + path.string());
   }
 }
-}  // namespace
+} // namespace
 
 int
 main(int argc, char** argv)
@@ -216,7 +252,8 @@ main(int argc, char** argv)
     auto const map = make_gridmap();
     save_image(output / "gridmap.png", map);
     // Read the generated image back to demonstrate the full image-to-polygon path.
-    auto const input = cv::imread((output / "gridmap.png").string(), cv::IMREAD_GRAYSCALE);
+    auto const input =
+        cv::imread((output / "gridmap.png").string(), cv::IMREAD_GRAYSCALE);
     if(input.empty())
     {
       throw std::runtime_error("Cannot read generated gridmap");
@@ -234,8 +271,9 @@ main(int argc, char** argv)
       std::cout << "  P" << i << ": " << polygon.outer.size()
                 << " outer vertices, " << polygon.holes.size() << " holes\n";
     }
-    std::cout << "Saved gridmap.png, free_mask.png, preview.png and polygons.json to "
-              << std::filesystem::absolute(output) << '\n';
+    std::cout
+        << "Saved gridmap.png, free_mask.png, preview.png and polygons.json to "
+        << std::filesystem::absolute(output) << '\n';
     return 0;
   }
   catch(std::exception const& error)
