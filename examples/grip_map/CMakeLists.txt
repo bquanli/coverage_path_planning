@@ -1,4 +1,8 @@
-find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs)
+find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs opencv_highgui)
 add_executable(gridmap_to_polygon gridmap_to_polygon.cc)
 target_include_directories(gridmap_to_polygon PRIVATE ${OpenCV_INCLUDE_DIRS})
 target_link_libraries(gridmap_to_polygon PRIVATE opencv_core opencv_imgproc opencv_imgcodecs)
+
+add_executable(gridmap_gen grid_map_gen.cc)
+target_include_directories(gridmap_gen PRIVATE ${OpenCV_INCLUDE_DIRS})
+target_link_libraries(gridmap_gen PRIVATE opencv_core opencv_imgproc opencv_imgcodecs opencv_highgui foxglove_cpp)
