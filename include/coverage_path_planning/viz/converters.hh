@@ -9,6 +9,10 @@
 
 namespace planning_viz::detail
 {
+foxglove::messages::SceneUpdate
+make_water_leak_update(WaterLeakView const& view,
+                       std::string_view frame_id,
+                       std::uint64_t stamp_ns);
 
 foxglove::messages::Timestamp
 to_message_timestamp(std::uint64_t stamp_ns);

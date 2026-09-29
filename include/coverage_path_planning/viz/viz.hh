@@ -73,6 +73,20 @@ trajectory_footprints(std::span<Points3 const> polygons, DrawContext ctx = {});
 void
 footprint(Points3 vertices, DrawContext ctx = {});
 
+struct WaterLeakView
+{
+  Points3 cloth;
+  Points3 squeegee;
+  Points3 wet_triangles;
+  Points3 wet_boundary_lines;
+  bool suction = true;
+};
+
+// /planning/water_leak: current tools and filled wet regions with red boundaries.
+// Empty cloth clears all entities; triangles are consumed synchronously.
+void
+water_leak(WaterLeakView const& view, DrawContext ctx = {});
+
 // Also publishes a map-to-base_link transform for Foxglove's 3D frame tree.
 // Body-frame forward velocity and yaw rate are optional when the log only has a pose.
 void

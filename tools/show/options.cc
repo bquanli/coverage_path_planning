@@ -59,8 +59,18 @@ load_options()
     options.footprint_yaw_step_deg = yaw_step.as<double>();
   }
   options.loop = required<bool>(replay, "loop");
+  if(auto const final_only = replay["final_only"])
+  {
+    options.final_only = final_only.as<bool>();
+  }
   options.show_footprint = required<bool>(replay, "show_footprint");
   options.show_trajectory = required<bool>(replay, "show_trajectory");
+  if(auto const water = yaml["water_leak"])
+  {
+    if(!water.IsMap()) { throw std::invalid_argument("water_leak must be a map"); }
+    if(water["enabled"]) { options.water_leak_enabled = water["enabled"].as<bool>(); }
+    if(water["suction"]) { options.suction = water["suction"].as<bool>(); }
+  }
   if(!std::isfinite(options.speed) || options.speed < 0.0 ||
      !std::isfinite(options.frame_rate_hz) || options.frame_rate_hz <= 0.0 ||
      options.frame_rate_hz > 1000.0 || !std::isfinite(options.start_delay) ||

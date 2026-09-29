@@ -94,8 +94,60 @@ cmake --build build --target show -j 4
 ./build/tools/show
 ```
 
+`./build/examples/trajectory_show` 也使用同一套日志回放功能和
+`configs/show.yaml`，默认读取 `data/pos_speed.log`。`replay.loop: true`
+时会持续循环发送，按 Ctrl+C 停止；两个入口使用相同端口，不要同时启动。
+
+`replay.final_only: true`（当前配置）会先计算整段日志，直接显示完整轨迹及
+最终残留水区域，机器人、洗涤布和吸水扒停在末帧位姿。计算期间不发布中间水迹，
+也不按播放速度等待。`loop: true` 时缓存最终图形并每秒重发，供晚连接客户端查看；
+`loop: false` 时只发布一次后退出。设 `final_only: false` 可恢复逐帧播放；
+未配置此字段的旧配置仍使用逐帧模式。
+
 目标名和可执行文件路径沿用现有方式。`tools/CMakeLists.txt` 使用 `add_subdirectory(show show_build)`，将 CMake 的中间目录与 `build/tools/show` 可执行文件分开，避免目录重名。
 
 ## 验证范围
 
 重构验证关注行为一致性：对同一份日志逐帧比较旧、新解析结果，对比采样轮廓的数量和每个顶点；覆盖跨午夜、坏记录、角度跨 ±π 及原地旋转。随后构建 `show`，运行文件输出回放并检查 MCAP 中的轨迹、当前轮廓和位姿数量。
+
+## 残留水可视化
+
+`trajectory.cc` 中的 `WaterLeakSimulation` 按原始日志逐帧推进，采用
+`examples/water_leak_model.py` 的默认机构尺寸、2 mm 栅格和 5 mm 插值。
+以轮轴为位姿原点，局部 x 向前、y 向左；洗涤布接触区为 300 × 80 mm，
+中心在轮轴后方 115 mm。吸水扒是跨度 436.420125 mm 的开放圆弧。
+这是平面模型，水迹显示在首帧的地面高度。
+
+配置 `water_leak.enabled` 控制计算与显示，`water_leak.suction` 控制吸水。
+Foxglove 3D 面板启用 `/planning/water_leak` 后，每个位姿显示：
+
+- `washcloth`：绿色矩形轮廓及半透明接触区。
+- `squeegee`：青色开放圆弧，关闭吸水时变灰。
+- `wet_regions`：截至当前帧的红色残留水面及红色边界线，直接标出世界坐标中的水迹位置，不显示统计文字。
+
+所有原始帧及插值帧均参与计算，不受 `footprint_spacing_m` 或
+`footprint_yaw_step_deg` 影响；未来帧只用于确定画布边界。循环播放时清空状态。
+超过 0.75 m 或 4 s 的日志间断不补画连接段，仅处理下一有效位姿。
+残留区域按栅格行程合并为矩形网格，不填平孔洞；0.0025 m² 阈值只用于
+四邻域连通区计数，小水迹仍显示并计入面积。
+红色边界仅沿水迹外沿和孔洞绘制，不显示网格内部拼接线；边界线宽固定为
+2 个屏幕像素，缩小视图时也能定位细小水迹。
+
+红色包括终点处尚未经过吸水扒的水迹，因此残留率不能直接解释为故障率。
+为保持与 Python 参考实现一致，计算保留了栅格膨胀补偿，而工具轮廓显示
+标称 CAD 尺寸；计算结果并非精确物理水量。当前仅支持默认机构尺寸，
+两张掩膜合计超过 256 MiB 时会明确报错，可截取日志或关闭本功能。
+构建 `show` 需要 OpenCV 的 core、imgproc 组件。
+
+验证命令：
+
+```bash
+cmake --build build --target show show_water_leak_test -j 4
+./build/tools/show_build/show_water_leak_test
+PYTHONDONTWRITEBYTECODE=1 python3 tests/check_water_leak_reference.py
+# 可选：将 6 帧夹具完整回放到一个尚不存在的 MCAP 路径
+./build/tools/show_build/show_water_leak_test --record /tmp/water-leak-check.mcap
+```
+
+测试涵盖逐帧状态、回放重置、坐标变换、网格面积与渲染面积一致、间断不连线，
+以及直行、倒车、转弯、原地旋转、航向跨 ±π、闭环和随机轨迹的 38 组 Python 对照。

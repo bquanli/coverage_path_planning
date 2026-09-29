@@ -81,6 +81,8 @@ replay(Options const& options,
   {
     throw std::runtime_error("log contains no valid pose records");
   }
+  std::optional<WaterLeakSimulation> water;
+  if(options.water_leak_enabled) { water.emplace(frames, options.suction); }
   // 根据所有位姿和机器人的轮廓生成一组多边形
   auto const polygons = build_trajectory(frames,
                                          footprint,
@@ -107,17 +109,78 @@ replay(Options const& options,
             frames.size(),
             polygons.size());
 
+  std::uint64_t last_stamp = 0;
+  auto const next_context = [&]
+  {
+    auto const now = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                         std::chrono::system_clock::now().time_since_epoch())
+                         .count();
+    last_stamp = std::max(last_stamp + 1, static_cast<std::uint64_t>(now));
+    return planning_viz::DrawContext{.stamp_ns = last_stamp,
+                                     .frame_id = options.frame_id};
+  };
+  auto const publish_trail = [&](planning_viz::DrawContext ctx)
+  {
+    if(options.show_footprint)
+    {
+      planning_viz::trajectory_footprints(polygon_views, ctx);
+    }
+    if(options.show_trajectory && positions.size() >= 2)
+    {
+      planning_viz::history_path(path_views, ctx);
+    }
+  };
+  auto const publish_water = [&](CleaningFootprint const& cleaning,
+                                  WaterLeakSnapshot const& snapshot,
+                                  planning_viz::DrawContext ctx)
+  {
+    planning_viz::water_leak({.cloth = cleaning.cloth,
+                              .squeegee = cleaning.squeegee,
+                              .wet_triangles = snapshot.wet_triangles,
+                              .wet_boundary_lines = snapshot.wet_boundary_lines,
+                              .suction = options.suction}, ctx);
+  };
+
+  if(options.final_only)
+  {
+    // Compute every pose in order without playback delays or intermediate scenes.
+    // Keep the resulting geometry for late subscribers; do not re-simulate it.
+    WaterLeakSnapshot snapshot;
+    if(water)
+    {
+      for(auto const& pose : frames)
+      {
+        if(running == 0) { return; }
+        water->advance(pose);
+      }
+      if(running == 0) { return; }
+      snapshot = water->snapshot();
+    }
+    auto const cleaning = make_cleaning_footprint(frames.back().state);
+    log::info("Final result ready; publishing the complete trajectory and wet regions");
+    while(running != 0)
+    {
+      auto const ctx = next_context();
+      publish_robot(frames.back(), footprint, ctx);
+      publish_trail(ctx);
+      if(water) { publish_water(cleaning, snapshot, ctx); }
+      if(!options.loop) { break; }
+      sleep_until(std::chrono::steady_clock::now() + 1s);
+    }
+    return;
+  }
+
   // `frame_interval` 是两帧之间的最短间隔。例如帧率为 10 Hz 时，间隔是 100 ms。
   auto const frame_interval =
       std::chrono::duration_cast<std::chrono::steady_clock::duration>(
           std::chrono::duration<double>(1.0 / options.frame_rate_hz));
   auto next_frame_time = std::chrono::steady_clock::now();
   auto next_trajectory_time = next_frame_time;
-  std::uint64_t last_stamp = 0;
   std::size_t cycle = 0;
   // 播放整个数据
   do
   {
+    if(water) { water->reset(); }
     auto const first_time = frames.front().log_time;
     auto const start = std::chrono::steady_clock::now();
     std::size_t poses = 0;
@@ -147,16 +210,16 @@ replay(Options const& options,
       {
         break;
       }
-      auto const now = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                           std::chrono::system_clock::now().time_since_epoch())
-                           .count();
-      auto const stamp =
-          std::max(last_stamp + 1, static_cast<std::uint64_t>(now));
-      last_stamp = stamp;
-      planning_viz::DrawContext const ctx{.stamp_ns = stamp,
-                                          .frame_id = options.frame_id};
+      auto const ctx = next_context();
       // - 每帧都会调用 `publish_robot()`，更新当前机器人的 odometry 和 footprint。同一实体被新位姿替换，所以 Foxglove 里显示的是移动中的机器人。
       publish_robot(frame, footprint, ctx);
+      if(water)
+      {
+        water->advance(frame);
+        auto const cleaning = make_cleaning_footprint(frame.state);
+        auto const snapshot = water->snapshot();
+        publish_water(cleaning, snapshot, ctx);
+      }
       ++poses;
       velocities += frame.velocity_count;
       // Publish the entire static trail periodically so late subscribers see it.
@@ -164,14 +227,7 @@ replay(Options const& options,
       // - 完整轨迹每帧都会检查是否该发布，但只有到 `next_trajectory_time` 时才调用 `trajectory_footprints()`：**每轮第一次立即调用，之后约每秒一次**。
       if(std::chrono::steady_clock::now() >= next_trajectory_time)
       {
-        if(options.show_footprint)
-        {
-          planning_viz::trajectory_footprints(polygon_views, ctx);
-        }
-        if(options.show_trajectory && positions.size() >= 2)
-        {
-          planning_viz::history_path(path_views, ctx);
-        }
+        publish_trail(ctx);
         next_trajectory_time = std::chrono::steady_clock::now() + 1s;
       }
       next_frame_time = std::chrono::steady_clock::now() + frame_interval;
@@ -226,7 +282,7 @@ run(Options const& options, coverage_path_planning::Footprint const& footprint)
       {
         log::info("Connect Foxglove to ws://{}:{}; in the 3D panel set "
                   "Fixed frame={}, Display frame={}, enable "
-                  "/tf, /planning/footprint and /planning/trajectory; "
+                  "/tf, /planning/footprint, /planning/trajectory and /planning/water_leak; "
                   "plot velocity from /planning/odometry",
                   options.host,
                   options.port,

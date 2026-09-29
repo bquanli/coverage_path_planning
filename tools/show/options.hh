@@ -20,9 +20,12 @@ struct Options
   double frame_rate_hz{};
   double start_delay{};
   bool loop{};
+  bool final_only = false;
   bool websocket{};
   bool show_footprint{};
   bool show_trajectory{};
+  bool water_leak_enabled = true;
+  bool suction = true;
 };
 
 // Read configs/show.yaml; relative paths are resolved from the project root.

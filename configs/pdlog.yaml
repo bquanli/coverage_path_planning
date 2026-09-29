@@ -1,0 +1,20 @@
+# 默认加载本文件，也可用 pdlog --config custom.yaml 指定其他配置。
+# 用法：./build/tools/pdlog_build/pdlog > selected.log
+# 相对目录基于本 YAML 所在目录；这里的 .. 指向项目根目录。
+# 仅扫描目录直属文件，不递归进入子目录。
+input_dir: "../pdlog/log_2026-09-29_17-50-49/log"
+
+# 按文件名 NavigationService.g3log.YYYYMMDD-HHMMSS.数字.pdlog 中的时间筛选。
+# 格式必须是 "YYYY-MM-DD HH:MM"，使用与文件名相同的时间，不做时区转换。
+# 起止分钟均包含：19:47 到 20:10 表示 19:47:00 至 20:10:59。
+# null 表示该侧不限制；两侧均 null 表示处理目录下所有符合命名规则的日志。
+# 示例：start: "2026-09-03 19:47"，end: "2026-09-03 20:10"
+# 注意：只筛选文件，不按日志正文的逐行时间截取。
+time_range:
+  start: null
+  end: null
+
+# 按行进行区分大小写的字面子串匹配，多个关键词之间为 OR（任意命中）。
+# [] 表示输出所有行；关键词必须是非空标量，建议始终加引号。
+# 示例：keywords: ["ERROR", "WARN"]
+keywords: ["Step 1. current pos "]

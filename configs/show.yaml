@@ -1,16 +1,21 @@
 # Relative paths are resolved from the project root.
-log_file: data/current_pos.log
+log_file: data/pos_speed.log
 
 replay:
+  final_only: true # true = 直接显示整段轨迹的最终水迹；false = 逐帧播放
   # 调整的是固定的帧的间隔，并非是自己所理解的跳过一些frame...
   speed: 0.0 # 0 = fixed frame rate; 1 = original timing, capped by frame_rate_hz
   frame_rate_hz: 10.0
-  loop: true # Restart at the end until Ctrl-C
+  loop: true # 逐帧模式循环播放；最终结果模式每秒重发，Ctrl+C 停止
   start_delay_seconds: 3.0 # Time to connect Foxglove before replay
   footprint_spacing_m: 0.6 # Straight-line spacing; the entire log is retained
   footprint_yaw_step_deg: 5.0 # Heading changes reduce spacing; also shows in-place turns
   show_footprint: false
   show_trajectory: true
+
+water_leak:
+  enabled: true # 当前洗涤布、吸水扒和截至当前位姿的残留水区域
+  suction: true # false 可对比关闭吸水的结果
 
 foxglove:
   websocket: true

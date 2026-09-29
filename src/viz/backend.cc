@@ -154,7 +154,7 @@ Backend::publish_line(SceneChannel& channel,
 {
   try
   {
-    std::lock_guard lock(state.mutex);
+    std::scoped_lock lock(state.mutex);
     auto const stamp = resolve_stamp(ctx.stamp_ns);
     if(state.last_stamp && stamp <= *state.last_stamp)
     {
@@ -255,6 +255,9 @@ Backend::init(Config const& config, std::string& error)
     r.footprint.emplace(
         take_or_throw(SceneChannel::create("/planning/footprint", r.context),
                       "create footprint"));
+    r.water_leak.emplace(
+        take_or_throw(SceneChannel::create("/planning/water_leak", r.context),
+                      "create water_leak"));
     r.transform.emplace(
         take_or_throw(fmsg::FrameTransformChannel::create("/tf", r.context),
                       "create transform"));
@@ -429,7 +432,7 @@ Backend::publish_lines(SceneChannel& channel,
 {
   try
   {
-    std::lock_guard lock(state.mutex);
+    std::scoped_lock lock(state.mutex);
     auto const stamp = resolve_stamp(ctx.stamp_ns);
     if(state.last_stamp && stamp <= *state.last_stamp)
     {
@@ -510,6 +513,41 @@ Backend::footprint(Points3 vertices, DrawContext ctx)
                0.03,
                true,
                "footprint");
+}
+
+void
+Backend::water_leak(WaterLeakView const& view, DrawContext ctx)
+{
+  if(!resources_) { return; }
+  try
+  {
+    auto& r = *resources_;
+    std::lock_guard lock(r.water_leak_state.mutex);
+    auto const stamp = resolve_stamp(ctx.stamp_ns);
+    if(r.water_leak_state.last_stamp && stamp <= *r.water_leak_state.last_stamp)
+    {
+      report_error("water_leak", "timestamp must strictly increase");
+      return;
+    }
+    auto const frame = ctx.frame_id.empty() ? std::string_view(r.config.default_frame) : ctx.frame_id;
+    fmsg::SceneUpdate message;
+    try
+    {
+      message = make_water_leak_update(view, frame, stamp);
+    }
+    catch(std::invalid_argument const& ex)
+    {
+      report_error("water_leak", ex.what());
+      message = make_water_leak_update({}, frame, stamp);
+    }
+    auto const error = r.water_leak->log(message, stamp);
+    if(error == Error::Ok) { r.water_leak_state.last_stamp = stamp; }
+    else { report_error("water_leak", foxglove::strerror(error)); }
+  }
+  catch(std::exception const& ex)
+  {
+    report_error("water_leak", ex.what());
+  }
 }
 
 void

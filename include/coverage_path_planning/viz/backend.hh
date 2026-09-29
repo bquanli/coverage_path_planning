@@ -30,6 +30,7 @@ public:
   void trajectory(Points3, DrawContext);
   void trajectory_footprints(std::span<Points3 const>, DrawContext);
   void footprint(Points3, DrawContext);
+  void water_leak(WaterLeakView const&, DrawContext);
   void
   odometry(RobotOdometry const&, DrawContext);
 
@@ -55,6 +56,7 @@ private:
     std::optional<foxglove::messages::PosesInFrameChannel> history_path_channel;
     std::optional<SceneChannel> trajectory;
     std::optional<SceneChannel> footprint;
+    std::optional<SceneChannel> water_leak;
     std::optional<foxglove::messages::FrameTransformChannel> transform;
     std::optional<foxglove::messages::OdometryChannel> odometry;
 
@@ -66,6 +68,7 @@ private:
     PublicationState path_state;
     PublicationState trajectory_state;
     PublicationState footprint_state;
+    PublicationState water_leak_state;
     PublicationState odometry_state;
   };
 

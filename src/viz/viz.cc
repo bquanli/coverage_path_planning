@@ -66,6 +66,12 @@ footprint(Points3 vertices, DrawContext ctx)
 }
 
 void
+water_leak(WaterLeakView const& view, DrawContext ctx)
+{
+  backend().water_leak(view, ctx);
+}
+
+void
 odometry(RobotOdometry const& state, DrawContext ctx)
 {
   backend().odometry(state, ctx);
