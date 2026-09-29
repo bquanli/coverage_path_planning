@@ -37,11 +37,16 @@ struct Cell
 };
 
 std::vector<Cell> const free_cells = {
-    {.row = 0, .col = 1},
-    {.row = 1, .col = 0},
-    {.row = 1, .col = 1},
-    {.row = 1, .col = 2},
-    {.row = 2, .col = 1},
+    {.row = 0, .col = 1}, // 0
+    {.row = 1, .col = 0}, // 1
+    {.row = 1, .col = 1}, // 2
+    {.row = 1, .col = 2}, // 3
+    {.row = 2, .col = 1}, // 4
+    {.row = 2, .col = 2}, // 5
+    {.row = 3, .col = 2}, // 6
+    {.row = 3, .col = 3}, // 7
+    {.row = 3, .col = 1}, // 8
+    {.row = 4, .col = 3}, // 9
 };
 
 struct CellId
@@ -70,6 +75,11 @@ std::vector<Edge> const tree_edges = {
     {1, 2},
     {2, 3},
     {2, 4},
+    {4, 5},
+    {5, 6},
+    {6, 7},
+    {6, 8},
+    {7, 9},
 };
 
 enum class SubCellDirection : int8_t
@@ -77,14 +87,14 @@ enum class SubCellDirection : int8_t
   NW = 1,
   NE = 2,
   SW = 3,
-  SE = 4
+  SE = 4,
 };
 enum class TreeDirection : int8_t
 {
   N = 1,
   S = 2,
   W = 3,
-  E = 4
+  E = 4,
 };
 
 struct SubCell
