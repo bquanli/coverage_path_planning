@@ -88,16 +88,16 @@ main()
   // 使用图像下面的子路径，方便在同一个 2D 视图中叠加显示。
   rec.log_static(
       "gridmap/annotations",
-      rerun::Points2D({{160.0f, 100.0f}, {300.0f, 250.0f}, {560.0f, 160.0f}})
+      rerun::Points2D({{160.0F, 100.0F}, {300.0F, 250.0F}, {560.0F, 160.0F}})
           .with_labels({"rectangle", "circle", "triangle"})
           .with_colors({rerun::Color(0, 255, 0),
                         rerun::Color(0, 0, 255),
                         rerun::Color(255, 255, 0)})
-          .with_radii({2.0f})
+          .with_radii({2.0F})
           .with_show_labels(true));
 
   // 5. 退出前等待缓冲数据发送完成
-  rec.flush_blocking();
+  auto result = rec.flush_blocking();
 
   return 0;
 }
