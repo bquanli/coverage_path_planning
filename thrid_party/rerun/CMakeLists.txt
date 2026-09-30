@@ -6,6 +6,7 @@
 #     -DCMAKE_INSTALL_PREFIX=/opt/sdk/rerun \
 #     -DRERUN_DOWNLOAD_AND_BUILD_ARROW=ON \
 #     -DRERUN_ARROW_LINK_SHARED=OFF
+#     -DCMAKE_POSITION_INDEPENDENT_CODE=ON
 
 # Respect rerun_sdk_DIR and CMAKE_PREFIX_PATH before the local fallback.
 find_package(
