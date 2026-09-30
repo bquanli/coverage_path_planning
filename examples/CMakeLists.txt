@@ -5,3 +5,4 @@ target_link_libraries(trajectory_show
 )
 
 add_subdirectory(grip_map)
+add_subdirectory(rerun)
