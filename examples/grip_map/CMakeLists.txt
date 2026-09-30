@@ -6,3 +6,12 @@ target_link_libraries(gridmap_to_polygon PRIVATE opencv_core opencv_imgproc open
 add_executable(gridmap_gen grid_map_gen.cc)
 target_include_directories(gridmap_gen PRIVATE ${OpenCV_INCLUDE_DIRS})
 target_link_libraries(gridmap_gen PRIVATE opencv_core opencv_imgproc opencv_imgcodecs opencv_highgui foxglove_cpp)
+
+
+
+
+add_executable(rgridmap_gen grid_map_gen_rerun.cc)
+target_link_libraries(rgridmap_gen
+    PRIVATE
+    coverage_path_planning::rerun opencv_core opencv_imgproc opencv_imgcodecs
+)

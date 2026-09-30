@@ -124,7 +124,7 @@ main()
     annotations.texts.push_back(text);
   }
 
-  
+
   // 保持程序运行
   while(true)
   {

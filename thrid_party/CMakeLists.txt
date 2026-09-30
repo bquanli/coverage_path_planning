@@ -23,3 +23,4 @@ target_link_libraries(coverage_threads INTERFACE Threads::Threads)
 
 add_subdirectory(foxglove)
 add_subdirectory(ppmd)
+add_subdirectory(rerun)
