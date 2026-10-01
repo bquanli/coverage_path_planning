@@ -21,9 +21,15 @@ add_library(coverage_threads INTERFACE)
 add_library(coverage_path_planning::threads ALIAS coverage_threads)
 target_link_libraries(coverage_threads INTERFACE Threads::Threads)
 
-add_subdirectory(foxglove)
+if(COVERAGE_WITH_FOXGLOVE)
+  add_subdirectory(foxglove)
+endif()
+
 add_subdirectory(ppmd)
-add_subdirectory(rerun)
+
+if(COVERAGE_WITH_RERUN)
+  add_subdirectory(rerun)
+endif()
 
 # 测试框架。存在即用，缺失时由 tests/ 自动跳过，不阻塞主构建。
 if(COVERAGE_BUILD_TESTS)

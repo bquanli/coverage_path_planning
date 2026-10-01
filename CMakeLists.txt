@@ -11,6 +11,12 @@ option(COVERAGE_BUILD_TESTS "构建单元测试目标" ON)
 option(COVERAGE_ENABLE_SANITIZERS "为本项目的目标启用 ASan + UBSan" OFF)
 option(COVERAGE_ENABLE_CLANG_TIDY "构建时对本项目目标运行 clang-tidy" OFF)
 
+# 可视化 SDK 是可选依赖：它们需要手工安装到 /opt/sdk，干净机器（例如 CI）上并不
+# 存在。做成可选之后，没有 SDK 的环境依然能配置、构建并测试与可视化无关的核心
+# 部分；一个跑不起来的 CI 等于没有 CI。
+option(COVERAGE_WITH_FOXGLOVE "启用 foxglove 可视化后端（需要 foxglove SDK）" ON)
+option(COVERAGE_WITH_RERUN "启用 rerun 可视化后端（需要 rerun SDK）" ON)
+
 # 告警与 sanitizer 通过两个接口目标传播，而不是用全局 CMAKE_CXX_FLAGS，
 # 这样第三方代码不会被注入我们的告警，告警列表才有可能保持在零。
 #   warnings   —— 仅影响目标自身的编译，用 PRIVATE 链接。

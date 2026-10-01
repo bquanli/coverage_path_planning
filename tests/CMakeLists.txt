@@ -1,9 +1,11 @@
 # 手工调试程序：需要人眼看输出，不属于自动化测试，所以不注册到 CTest。
-add_executable(stc_debug stc_debug.cc)
-target_link_libraries(stc_debug
-    PRIVATE
-    foxglove_cpp
-)
+if(COVERAGE_WITH_FOXGLOVE)
+  add_executable(stc_debug stc_debug.cc)
+  target_link_libraries(stc_debug
+      PRIVATE
+      foxglove_cpp
+  )
+endif()
 
 if(NOT COVERAGE_BUILD_TESTS)
   return()
