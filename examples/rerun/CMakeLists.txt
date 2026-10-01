@@ -8,3 +8,8 @@ target_link_libraries(simu_show
     PRIVATE
     coverage_path_planning::rerun
 )
+add_executable(reference_line reference_line.cc)
+target_link_libraries(reference_line
+    PRIVATE
+    coverage_path_planning::rerun
+)
