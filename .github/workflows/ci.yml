@@ -1,0 +1,129 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+# 同一分支只保留最新一次运行，连续推送时自动取消旧的。
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # CI 机器上没有装在 /opt/sdk 的 rerun / foxglove SDK，所以只构建与可视化
+  # 无关的核心部分（见根 CMakeLists.txt 里的两个 COVERAGE_WITH_* 选项）。
+  CORE_FLAGS: -DCOVERAGE_WITH_FOXGLOVE=OFF -DCOVERAGE_WITH_RERUN=OFF
+
+jobs:
+  format:
+    name: clang-format
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 clang-format
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends clang-format
+
+      - name: 检查排版
+        run: scripts/check_format.sh
+
+  build-and-test:
+    # 普通构建和 sanitizer 构建各跑一遍 ctest。
+    # fail-fast: false：其中一个失败时仍要能看到另一个的结果，
+    # 否则无法区分“逻辑错”和“只有 sanitizer 才暴露的内存错”。
+    name: 构建与测试 (${{ matrix.name }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: plain
+            cmake_flags: ''
+          - name: sanitizers
+            cmake_flags: '-DCOVERAGE_ENABLE_SANITIZERS=ON'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装系统依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake libeigen3-dev libgtest-dev libopencv-dev
+
+      - name: 安装 Conan
+        run: pipx install conan
+
+      - name: 缓存 Conan 包
+        uses: actions/cache@v4
+        with:
+          path: ~/.conan2
+          key: conan-${{ runner.os }}-${{ hashFiles('conanfile.py') }}
+
+      - name: 解析第三方依赖
+        run: |
+          conan profile detect --force
+          conan install . -s build_type=Debug --build=missing
+
+      # -DCMAKE_BUILD_TYPE 必须显式传：conan 生成的依赖配置文件会断言它已定义，
+      # 而 conan_toolchain.cmake 本身并不设置它（本地用 conan 的 preset 时由 preset 设）。
+      - name: 配置
+        run: |
+          cmake -S . -B build/Debug \
+            -DCMAKE_TOOLCHAIN_FILE=build/Debug/generators/conan_toolchain.cmake \
+            -DCMAKE_BUILD_TYPE=Debug \
+            ${CORE_FLAGS} ${{ matrix.cmake_flags }}
+
+      - name: 构建
+        run: cmake --build build/Debug -j"$(nproc)"
+
+      # sanitizer 配置下泄漏检查默认开着。某些受限容器里 LeakSanitizer 无法 ptrace
+      # 会直接自毁（测试全过但退出码非零），那种环境下给上一步追加
+      #   -DCOVERAGE_ASAN_TEST_OPTIONS=detect_container_overflow=0:detect_leaks=0
+      # GitHub 托管 runner 是虚拟机，不受此限制，所以这里保留泄漏检查。
+      - name: 跑测试
+        run: ctest --test-dir build/Debug --output-on-failure
+
+  clang-tidy:
+    name: clang-tidy
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装系统依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake clang-tidy libeigen3-dev libgtest-dev libopencv-dev
+
+      - name: 安装 Conan
+        run: pipx install conan
+
+      - name: 缓存 Conan 包
+        uses: actions/cache@v4
+        with:
+          path: ~/.conan2
+          key: conan-${{ runner.os }}-${{ hashFiles('conanfile.py') }}
+
+      - name: 解析第三方依赖
+        run: |
+          conan profile detect --force
+          conan install . -s build_type=Debug --build=missing
+
+      - name: 配置
+        run: |
+          cmake -S . -B build/Debug \
+            -DCMAKE_TOOLCHAIN_FILE=build/Debug/generators/conan_toolchain.cmake \
+            -DCMAKE_BUILD_TYPE=Debug \
+            ${CORE_FLAGS} -DCOVERAGE_ENABLE_CLANG_TIDY=ON
+
+      # 只构建已接入 clang-tidy 的目标，其余目标没挂检查，编也是白编。
+      #
+      # 注意：COVERAGE_CLANG_TIDY_WARNINGS_AS_ERRORS 默认 OFF，所以现在诊断只打印
+      # 不阻断。这是故意的第一步：先看清存量代码到底会报什么。等输出干净了，
+      # 在上一步加上 -DCOVERAGE_CLANG_TIDY_WARNINGS_AS_ERRORS=ON，这个 job 才真有牙。
+      - name: 对已接入的目标运行 clang-tidy
+        run: cmake --build build/Debug --target coverage_planning -j"$(nproc)"

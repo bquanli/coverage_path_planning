@@ -149,7 +149,77 @@ cmake -S . -B build/Debug -DCOVERAGE_ENABLE_SANITIZERS=ON \
 不动点测试（`StraightLineIsFixedPoint`）特别值得学：直线已经是最优解，任何漏写分量、
 符号弄反都会把点推走，所以一条断言能拦住很多种 bug。
 
-## 8. 还没做完的部分
+## 8. 静态检查与 CI
+
+### clang-tidy 为什么逐目标接入
+
+`cmake/ClangTidy.cmake` 提供 `coverage_enable_clang_tidy(<target>...)`，设的是目标的
+`CXX_CLANG_TIDY` 属性，而不是全局 `CMAKE_CXX_CLANG_TIDY`。理由和第 6 节里告警接口
+目标的理由一模一样：`third_party/` 下是别人的代码，我们既不想也无权清理它的诊断。
+一旦输出里永远有清不完的噪声，这份检查就会被所有人忽略——这是静态检查工具最
+常见的死法。
+
+目前只给 `coverage_planning` 一个目标开启。这是有意的：存量代码上一次全开，一定刷出
+几百条诊断，结果一定是集体无视。正确做法是棘轮（ratchet）：先把一个干净的目标钉住，
+再一个一个往里加，每次加一行。
+
+还修正了 `.clang-tidy` 的一个真 bug：它原本要求 `camelCase`，而项目代码通篇是
+`snake_case`。**命名规约配错的检查比不开更坏**：它会把每个正确的名字都报成错。
+
+### clang-format 检查
+
+`scripts/check_format.sh` 只检查 git 跟踪的文件并排除 `third_party/`；`--dry-run --Werror`
+让不合规变成非零退出码，并按 `file:line:col` 打印位置。加 `--fix` 就地修正。
+
+推荐的上车顺序：先用一个纯机械的 commit 把全项目格式化一次，再在 CI 里开强制检查。
+永远不要把大规模重排版和逻辑改动放在同一个 commit 里，否则 review 无法进行。
+判定“是不是纯格式改动”有个客观办法：把 `HEAD` 版本格式化后和当前文件逐字节比对，
+一致则说明没有混入人工编辑。
+
+### CI 的四个 job
+
+`.github/workflows/ci.yml`：`clang-format` 检查排版；`构建与测试` 用 matrix 跑普通和
+sanitizer 两种配置，各做一遍 `ctest`；`clang-tidy` 对已接入的目标跑检查。
+`fail-fast: false` 是关键：否则一个配置失败会杀掉另一个，你就分不清“逻辑错”和
+“只有 sanitizer 才暴露的内存错”。
+
+**CI 只构建核心部分**，rerun 和 foxglove 的 SDK 装在 `/opt/sdk`，干净机器上不存在，
+而 `find_package(... REQUIRED)` 会直接让 configure 失败。这就是 `COVERAGE_WITH_FOXGLOVE`
+和 `COVERAGE_WITH_RERUN` 两个选项的来由。这个因果关系值得记住：**“让 CI 跑起来”
+会反过来逼你把可选依赖真正做成可选的**，而这本身就是健康的设计。
+
+### 怎么验证这类配置
+
+配置文件最容易“看着对但不生效”，所以不要依赖阅读，要想办法观测。两个好用的手法：
+
+1. **用桩程序替掉工具**。写一个只把自己参数记到日志的假 `clang-tidy`，用
+   `-DCOVERAGE_CLANG_TIDY_EXECUTABLE=` 指过去，再删掉相关目标的 `.o` 强制重编。
+   日志里出现了哪些文件，就是检查真实覆盖的范围。比读 CMake 可靠得多。
+2. **反向探针**。故意弄坏一处（加一行排版乱的代码、改一个违规的变量名），确认检查
+   真的会失败。一个从来不报错的检查和没有检查是一回事。
+
+CI 脚本还要在**干净目录**里模拟一遍，不能在已有的 `build/Debug` 里试。本次就是这样
+抳出来一个会让 CI 首次运行就失败的问题：conan 生成的依赖配置会断言
+`CMAKE_BUILD_TYPE` 已定义，而 `conan_toolchain.cmake` 本身不设它；本地之前一直正常，
+只是因为旧的 CMake 缓存里已经存了这个值。
+
+### 常用命令
+
+```bash
+# 格式：检查 / 就地修正
+scripts/check_format.sh
+scripts/check_format.sh --fix
+
+# clang-tidy
+cmake -S . -B build/Debug -DCOVERAGE_ENABLE_CLANG_TIDY=ON
+cmake --build build/Debug --target coverage_planning
+
+# 模拟 CI 的核心构建（不需要任何可视化 SDK）
+cmake -S . -B build/Core -DCMAKE_BUILD_TYPE=Debug \
+    -DCOVERAGE_WITH_FOXGLOVE=OFF -DCOVERAGE_WITH_RERUN=OFF
+```
+
+## 9. 还没做完的部分
 
 - `examples/rerun/reference_line.cc` 里的几何计算仍然在示例文件里，
   `tests/reference_line_geometry_test.cc` 靠 `#include` 那个 `.cc` 加
