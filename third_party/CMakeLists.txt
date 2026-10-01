@@ -1,4 +1,4 @@
-# thrid_party/CMakeLists.txt
+# third_party/CMakeLists.txt
 
 find_package(yaml-cpp CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)

@@ -156,4 +156,3 @@ cmake -S . -B build/Debug -DCOVERAGE_ENABLE_SANITIZERS=ON \
   `REFERENCE_LINE_GEOMETRY_ONLY` 宏来偷代码，且未接入构建。
   按本文第 1 节的模式搬成 `planning/reference_line.{hh,cc}` + GTest 用例。
 - `tests/pdlog_test.cc`、`tests/show_water_leak_test.cc` 同样没有注册到 CTest。
-- `thrid_party/` 是 `third_party` 的拼写错误，涉及多处引用，建议单独一个 commit 改名。
