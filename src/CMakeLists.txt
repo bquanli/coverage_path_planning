@@ -39,5 +39,10 @@ target_link_libraries(coverage_planning
     PRIVATE coverage_path_planning::warnings
 )
 
+# clang-tidy 先只覆盖这一个目标：它是全新写的、唯一有单元测试的组件，有条件
+# 做到零诊断。其余历史目标按同样的一行逐个接入，不要一次全开——一上来
+# 刷出几百条诊断，结果一定是所有人都无视它。
+coverage_enable_clang_tidy(coverage_planning)
+
 add_executable(main main.cc)
 target_link_libraries(main PRIVATE coverage_path_planning::viz coverage_path_planning::threads)

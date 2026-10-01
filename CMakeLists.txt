@@ -9,6 +9,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(COVERAGE_BUILD_TESTS "构建单元测试目标" ON)
 option(COVERAGE_ENABLE_SANITIZERS "为本项目的目标启用 ASan + UBSan" OFF)
+option(COVERAGE_ENABLE_CLANG_TIDY "构建时对本项目目标运行 clang-tidy" OFF)
 
 # 告警与 sanitizer 通过两个接口目标传播，而不是用全局 CMAKE_CXX_FLAGS，
 # 这样第三方代码不会被注入我们的告警，告警列表才有可能保持在零。
@@ -32,6 +33,11 @@ if(COVERAGE_ENABLE_SANITIZERS)
   target_link_options(coverage_sanitizers INTERFACE
       -fsanitize=address,undefined)
 endif()
+
+# clang-tidy 的探测与 coverage_enable_clang_tidy() 函数。
+# 必须在 add_subdirectory 之前 include，子目录里才能调用到这个函数。
+list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
+include(ClangTidy)
 
 enable_testing()
 

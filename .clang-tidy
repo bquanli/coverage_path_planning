@@ -18,6 +18,7 @@ Checks: >
   -readability-function-size,
   -misc-non-private-member-variables-in-classes,
   -misc-no-recursion,
+  -misc-include-cleaner,
   -cppcoreguidelines-owning-memory,
   -cppcoreguidelines-avoid-magic-numbers,
   -cppcoreguidelines-special-member-functions,
@@ -30,6 +31,10 @@ Checks: >
   -concurrency-mt-unsafe,
   -modernize-use-designated-initializers,
   -bugprone-empty-catch,
+# 只对本项目自己的头文件报诊断。不设置时 clang-tidy 只看 .cc，公开头文件
+# 里的问题会被完全漏掉；设成 .* 又会把 Eigen 等三方头文件全算进来。
+HeaderFilterRegex: 'include/coverage_path_planning/.*'
+
 CheckOptions:
   # 配置认知复杂度（函数的复杂度阈值）
   - key: readability-function-cognitive-complexity.Threshold
@@ -40,12 +45,43 @@ CheckOptions:
   # 配置 bugprone-argument-comment 的参数阈值
   - key: bugprone-argument-comment.MinimumNumberOfArguments
     value: 3
-  - key: readability-identifier-naming.VariableCase
-    value: camelCase
+  # 命名规约按项目实际风格写：类型 CamelCase，其余一律 snake_case，
+  # 编译期常量额外加 k_ 前缀（如 k_min_smooth_points）。
+  # 这一组选项必须和代码一致，否则整个检查只输出噪声。
+  - key: readability-identifier-naming.NamespaceCase
+    value: lower_case
   - key: readability-identifier-naming.ClassCase
     value: CamelCase
+  - key: readability-identifier-naming.StructCase
+    value: CamelCase
+  - key: readability-identifier-naming.UnionCase
+    value: CamelCase
+  - key: readability-identifier-naming.EnumCase
+    value: CamelCase
+  - key: readability-identifier-naming.EnumConstantCase
+    value: CamelCase
+  - key: readability-identifier-naming.TypeAliasCase
+    value: CamelCase
+  - key: readability-identifier-naming.TypedefCase
+    value: CamelCase
   - key: readability-identifier-naming.FunctionCase
-    value: camelCase
+    value: lower_case
+  - key: readability-identifier-naming.VariableCase
+    value: lower_case
+  - key: readability-identifier-naming.ParameterCase
+    value: lower_case
+  - key: readability-identifier-naming.MemberCase
+    value: lower_case
+  - key: readability-identifier-naming.ConstexprVariableCase
+    value: lower_case
+  - key: readability-identifier-naming.ConstexprVariablePrefix
+    value: 'k_'
+  - key: readability-identifier-naming.GlobalConstantCase
+    value: lower_case
+  - key: readability-identifier-naming.GlobalConstantPrefix
+    value: 'k_'
+  - key: readability-identifier-naming.MacroDefinitionCase
+    value: UPPER_CASE
   - key: readability-function-size.LineThreshold
     value: 50
   - key: readability-function-size.BranchThreshold
