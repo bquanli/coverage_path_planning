@@ -13,3 +13,10 @@ target_link_libraries(reference_line
     PRIVATE
     coverage_path_planning::rerun
 )
+add_executable(smooth_line smooth_line.cc)
+target_link_libraries(smooth_line
+    PRIVATE
+    coverage_path_planning::rerun
+    coverage_path_planning::planning
+    coverage_path_planning::warnings
+)

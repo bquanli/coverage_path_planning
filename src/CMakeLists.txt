@@ -29,5 +29,15 @@ target_link_libraries(coverage_common
     PRIVATE coverage_path_planning::log
 )
 
+add_library(coverage_planning SHARED
+  planning/path_smoother.cc
+)
+add_library(coverage_path_planning::planning ALIAS coverage_planning)
+target_include_directories(coverage_planning PUBLIC "${PROJECT_SOURCE_DIR}/include")
+target_link_libraries(coverage_planning
+    PUBLIC coverage_path_planning::eigen3 coverage_path_planning::sanitizers
+    PRIVATE coverage_path_planning::warnings
+)
+
 add_executable(main main.cc)
 target_link_libraries(main PRIVATE coverage_path_planning::viz coverage_path_planning::threads)

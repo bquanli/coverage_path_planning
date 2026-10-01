@@ -24,3 +24,13 @@ target_link_libraries(coverage_threads INTERFACE Threads::Threads)
 add_subdirectory(foxglove)
 add_subdirectory(ppmd)
 add_subdirectory(rerun)
+
+# 测试框架。存在即用，缺失时由 tests/ 自动跳过，不阻塞主构建。
+if(COVERAGE_BUILD_TESTS)
+  find_package(GTest CONFIG)
+  if(GTest_FOUND)
+    add_library(coverage_gtest INTERFACE)
+    add_library(coverage_path_planning::gtest ALIAS coverage_gtest)
+    target_link_libraries(coverage_gtest INTERFACE GTest::gtest GTest::gtest_main)
+  endif()
+endif()
