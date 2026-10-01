@@ -10,7 +10,7 @@ namespace pdlog
 // 文件名中的本地时间，仅用于排序和筛选，不表示已转换为 UTC。
 using Timestamp = std::chrono::sys_seconds;
 
-enum class InputFormat:uint8_t
+enum class InputFormat : uint8_t
 {
   Pdlog,
   Text,

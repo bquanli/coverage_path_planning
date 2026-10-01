@@ -33,9 +33,8 @@ ensure_valid_weight(double value, char const* name)
 {
   if(!std::isfinite(value) || value < 0.0)
   {
-    throw std::invalid_argument(
-        std::string("path_smoother: ") + name +
-        " must be finite and non-negative");
+    throw std::invalid_argument(std::string("path_smoother: ") + name +
+                                " must be finite and non-negative");
   }
 }
 

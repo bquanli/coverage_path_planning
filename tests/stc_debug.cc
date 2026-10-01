@@ -339,7 +339,8 @@ make_grid(std::vector<Cell> const& cells)
                             double x2,
                             double y2,
                             fmsg::Color const& color,
-                            double width) {
+                            double width)
+  {
     entity.lines.push_back(make_line(fmsg::Point3{.x = x1, .y = y1, .z = z},
                                      fmsg::Point3{.x = x2, .y = y2, .z = z},
                                      color,

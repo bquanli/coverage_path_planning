@@ -36,11 +36,13 @@ local_cleaning_footprint(double expansion = 0.0)
   auto const half = squeegee_width_m / 2.0;
   auto const h = cad_distance_m - squeegee_rear_m;
   auto const radius = (half * half + h * h) / (2.0 * h);
-  auto const samples = std::max(65, static_cast<int>(std::ceil(squeegee_width_m / 0.0015)) + 1);
+  auto const samples =
+      std::max(65, static_cast<int>(std::ceil(squeegee_width_m / 0.0015)) + 1);
   for(int i = 0; i < samples; ++i)
   {
     auto const u = -half + squeegee_width_m * i / (samples - 1);
-    auto const z = -cad_distance_m + radius - std::sqrt(radius * radius - u * u);
+    auto const z =
+        -cad_distance_m + radius - std::sqrt(radius * radius - u * u);
     result.squeegee.emplace_back(z, u, 0.0);
   }
   return result;
@@ -78,22 +80,26 @@ struct WaterLeakSimulation::Impl
   bool suction;
   cv::Mat wet;
   cv::Mat covered;
-  CleaningFootprint local = local_cleaning_footprint(cell_m * std::sqrt(2.0) / 2.0);
+  CleaningFootprint local =
+      local_cleaning_footprint(cell_m * std::sqrt(2.0) / 2.0);
   std::optional<Frame> previous;
 
-  std::vector<cv::Point> pixels(Polygon const& polygon, RobotState const& state) const
+  std::vector<cv::Point>
+  pixels(Polygon const& polygon, RobotState const& state) const
   {
     std::vector<cv::Point> result;
     for(auto const& p : transform(polygon, state))
     {
       // nearbyint, like numpy.rint, uses nearest-even rounding.
-      result.emplace_back(static_cast<int>(std::nearbyint((p.x() - min_x) / cell_m - 0.5)),
-                          static_cast<int>(std::nearbyint((p.y() - min_y) / cell_m - 0.5)));
+      result.emplace_back(
+          static_cast<int>(std::nearbyint((p.x() - min_x) / cell_m - 0.5)),
+          static_cast<int>(std::nearbyint((p.y() - min_y) / cell_m - 0.5)));
     }
     return result;
   }
 
-  void paint(RobotState const& state)
+  void
+  paint(RobotState const& state)
   {
     auto const cloth = pixels(local.cloth, state);
     cv::fillConvexPoly(wet, cloth, cv::Scalar(1), cv::LINE_8);
@@ -101,14 +107,15 @@ struct WaterLeakSimulation::Impl
     if(suction)
     {
       auto const arc = pixels(local.squeegee, state);
-      auto const thickness = static_cast<int>(std::ceil(
-          (suction_stroke_m + cell_m * std::sqrt(2.0)) / cell_m));
+      auto const thickness = static_cast<int>(
+          std::ceil((suction_stroke_m + cell_m * std::sqrt(2.0)) / cell_m));
       cv::polylines(wet, arc, false, cv::Scalar(0), thickness, cv::LINE_8);
     }
   }
 };
 
-WaterLeakSimulation::WaterLeakSimulation(std::span<Frame const> frames, bool suction)
+WaterLeakSimulation::WaterLeakSimulation(std::span<Frame const> frames,
+                                         bool suction)
   : impl_(std::make_unique<Impl>())
 {
   if(frames.empty())
@@ -139,9 +146,12 @@ WaterLeakSimulation::WaterLeakSimulation(std::span<Frame const> frames, bool suc
   constexpr double max_cells = 128.0 * 1024.0 * 1024.0;
   if(!std::isfinite(width * height) || width * height > max_cells)
   {
-    throw std::runtime_error("water leak grid exceeds 256 MiB; select a shorter log or disable water_leak.enabled");
+    throw std::runtime_error("water leak grid exceeds 256 MiB; select a "
+                             "shorter log or disable water_leak.enabled");
   }
-  impl_->wet = cv::Mat::zeros(static_cast<int>(height), static_cast<int>(width), CV_8UC1);
+  impl_->wet = cv::Mat::zeros(static_cast<int>(height),
+                              static_cast<int>(width),
+                              CV_8UC1);
   impl_->covered = cv::Mat::zeros(impl_->wet.size(), CV_8UC1);
   impl_->ground_z = frames.front().state.position.z();
   impl_->suction = suction;
@@ -169,7 +179,8 @@ WaterLeakSimulation::advance(Frame const& frame)
     auto const& a = *impl_->previous;
     if(frame.log_time < a.log_time)
     {
-      throw std::invalid_argument("cleaning poses must be in time order; reset between replays");
+      throw std::invalid_argument(
+          "cleaning poses must be in time order; reset between replays");
     }
     auto const d = std::hypot(frame.state.position.x() - a.state.position.x(),
                               frame.state.position.y() - a.state.position.y());
@@ -177,12 +188,15 @@ WaterLeakSimulation::advance(Frame const& frame)
     auto const da = std::atan2(std::sin(yaw_delta), std::cos(yaw_delta));
     if(d <= 0.75 && frame.log_time - a.log_time <= std::chrono::seconds(4))
     {
-      auto const count = std::max(1, static_cast<int>(std::ceil(std::max(d, std::abs(da) * 0.5) / 0.005)));
+      auto const count = std::max(
+          1,
+          static_cast<int>(std::ceil(std::max(d, std::abs(da) * 0.5) / 0.005)));
       for(int j = 1; j <= count; ++j)
       {
         auto const u = static_cast<double>(j) / count;
         RobotState state;
-        state.position = a.state.position + (frame.state.position - a.state.position) * u;
+        state.position =
+            a.state.position + (frame.state.position - a.state.position) * u;
         state.yaw = a.state.yaw + da * u;
         impl_->paint(state);
       }
@@ -208,12 +222,20 @@ WaterLeakSimulation::snapshot() const
   {
     auto const z = impl_->ground_z + 0.006;
     result.wet_boundary_lines.emplace_back(impl_->min_x + x0 * cell_m,
-                                           impl_->min_y + y0 * cell_m, z);
+                                           impl_->min_y + y0 * cell_m,
+                                           z);
     result.wet_boundary_lines.emplace_back(impl_->min_x + x1 * cell_m,
-                                           impl_->min_y + y1 * cell_m, z);
+                                           impl_->min_y + y1 * cell_m,
+                                           z);
   };
   result.covered_area_m2 = cv::countNonZero(impl_->covered) * cell_m * cell_m;
-  struct Run { int start; int end; std::size_t label; std::size_t rectangle; };
+  struct Run
+  {
+    int start;
+    int end;
+    std::size_t label;
+    std::size_t rectangle;
+  };
   std::vector<std::size_t> parent, sizes;
   std::vector<cv::Rect> rectangles;
   auto const root = [&](std::size_t i)
@@ -234,9 +256,16 @@ WaterLeakSimulation::snapshot() const
     std::size_t first_overlap = 0;
     for(int x = 0; x < impl_->wet.cols;)
     {
-      if(row[x] == 0) { ++x; continue; }
+      if(row[x] == 0)
+      {
+        ++x;
+        continue;
+      }
       auto const start = x;
-      while(x < impl_->wet.cols && row[x] != 0) { ++x; }
+      while(x < impl_->wet.cols && row[x] != 0)
+      {
+        ++x;
+      }
       // Draw only exposed cell edges, including hole boundaries. Never outline
       // the internal rectangles used to compress the triangle mesh.
       edge(start, y, start, y + 1);
@@ -268,17 +297,22 @@ WaterLeakSimulation::snapshot() const
       parent.push_back(label);
       sizes.push_back(size);
       auto rectangle = rectangles.size();
-      while(first_overlap < previous.size() && previous[first_overlap].end <= start)
+      while(first_overlap < previous.size() &&
+            previous[first_overlap].end <= start)
       {
         ++first_overlap;
       }
-      for(auto k = first_overlap; k < previous.size() && previous[k].start < x; ++k)
+      for(auto k = first_overlap; k < previous.size() && previous[k].start < x;
+          ++k)
       {
         auto a = root(label);
         auto b = root(previous[k].label);
         if(a != b)
         {
-          if(sizes[a] < sizes[b]) { std::swap(a, b); }
+          if(sizes[a] < sizes[b])
+          {
+            std::swap(a, b);
+          }
           parent[b] = a;
           sizes[a] += sizes[b];
           label = a;
@@ -303,7 +337,10 @@ WaterLeakSimulation::snapshot() const
   result.wet_area_m2 = wet_cells * cell_m * cell_m;
   for(std::size_t i = 0; i < parent.size(); ++i)
   {
-    if(parent[i] == i && sizes[i] >= min_cluster_cells) { ++result.clusters; }
+    if(parent[i] == i && sizes[i] >= min_cluster_cells)
+    {
+      ++result.clusters;
+    }
   }
   result.wet_triangles.reserve(rectangles.size() * 6);
   for(auto const& rect : rectangles)
@@ -314,8 +351,12 @@ WaterLeakSimulation::snapshot() const
     auto const y1 = y0 + rect.height * cell_m;
     auto const z = impl_->ground_z + 0.005;
     result.wet_triangles.insert(result.wet_triangles.end(),
-        {{x0, y0, z}, {x1, y0, z}, {x1, y1, z},
-         {x0, y0, z}, {x1, y1, z}, {x0, y1, z}});
+                                {{x0, y0, z},
+                                 {x1, y0, z},
+                                 {x1, y1, z},
+                                 {x0, y0, z},
+                                 {x1, y1, z},
+                                 {x0, y1, z}});
   }
   return result;
 }
@@ -351,7 +392,7 @@ build_trajectory(std::span<Frame const> frames,
     return polygons;
   }
   auto const yaw_step = yaw_step_deg * std::numbers::pi / 180.0;
-  
+
   polygons.push_back(make_footprint(frames.front().state, footprint));
   double progress = 0.0;
   std::size_t last_selected = 0;

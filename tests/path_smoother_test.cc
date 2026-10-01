@@ -109,8 +109,8 @@ TEST(PathSmoother, CostDecreasesMonotonically)
     auto const result = smooth_path(origin, options);
     double const cost = smoothing_cost(result.points, origin, options);
 
-    EXPECT_LE(cost, previous + 1e-12) << "cost increased at iteration "
-                                      << iterations;
+    EXPECT_LE(cost, previous + 1e-12)
+        << "cost increased at iteration " << iterations;
     previous = cost;
   }
 
@@ -253,8 +253,7 @@ TEST(PathSmoother, StraightLineIsFixedPoint)
 TEST(PathSmoother, RejectsTooFewPoints)
 {
   EXPECT_THROW(smooth_path({}), std::invalid_argument);
-  EXPECT_THROW(smooth_path({Eigen::Vector2d(0.0, 0.0)}),
-               std::invalid_argument);
+  EXPECT_THROW(smooth_path({Eigen::Vector2d(0.0, 0.0)}), std::invalid_argument);
   EXPECT_THROW(
       smooth_path({Eigen::Vector2d(0.0, 0.0), Eigen::Vector2d(0.1, 0.0)}),
       std::invalid_argument);

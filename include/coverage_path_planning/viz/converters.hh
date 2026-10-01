@@ -24,11 +24,11 @@ make_deletion(std::string_view entity_id, std::uint64_t stamp_ns);
 // invalid_argument; the publisher reports it and clears the old entity.
 foxglove::messages::SceneUpdate
 make_line_update(Points3 points,
-               std::string_view entity_id,
-               std::string_view frame_id,
-               std::uint64_t stamp_ns,
-               foxglove::messages::Color color,
-               double width_m,
-               bool closed);
+                 std::string_view entity_id,
+                 std::string_view frame_id,
+                 std::uint64_t stamp_ns,
+                 foxglove::messages::Color color,
+                 double width_m,
+                 bool closed);
 
 } // namespace planning_viz::detail

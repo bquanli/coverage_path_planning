@@ -82,7 +82,10 @@ replay(Options const& options,
     throw std::runtime_error("log contains no valid pose records");
   }
   std::optional<WaterLeakSimulation> water;
-  if(options.water_leak_enabled) { water.emplace(frames, options.suction); }
+  if(options.water_leak_enabled)
+  {
+    water.emplace(frames, options.suction);
+  }
   // 根据所有位姿和机器人的轮廓生成一组多边形
   auto const polygons = build_trajectory(frames,
                                          footprint,
@@ -131,14 +134,15 @@ replay(Options const& options,
     }
   };
   auto const publish_water = [&](CleaningFootprint const& cleaning,
-                                  WaterLeakSnapshot const& snapshot,
-                                  planning_viz::DrawContext ctx)
+                                 WaterLeakSnapshot const& snapshot,
+                                 planning_viz::DrawContext ctx)
   {
     planning_viz::water_leak({.cloth = cleaning.cloth,
                               .squeegee = cleaning.squeegee,
                               .wet_triangles = snapshot.wet_triangles,
                               .wet_boundary_lines = snapshot.wet_boundary_lines,
-                              .suction = options.suction}, ctx);
+                              .suction = options.suction},
+                             ctx);
   };
 
   if(options.final_only)
@@ -150,21 +154,34 @@ replay(Options const& options,
     {
       for(auto const& pose : frames)
       {
-        if(running == 0) { return; }
+        if(running == 0)
+        {
+          return;
+        }
         water->advance(pose);
       }
-      if(running == 0) { return; }
+      if(running == 0)
+      {
+        return;
+      }
       snapshot = water->snapshot();
     }
     auto const cleaning = make_cleaning_footprint(frames.back().state);
-    log::info("Final result ready; publishing the complete trajectory and wet regions");
+    log::info("Final result ready; publishing the complete trajectory and wet "
+              "regions");
     while(running != 0)
     {
       auto const ctx = next_context();
       publish_robot(frames.back(), footprint, ctx);
       publish_trail(ctx);
-      if(water) { publish_water(cleaning, snapshot, ctx); }
-      if(!options.loop) { break; }
+      if(water)
+      {
+        publish_water(cleaning, snapshot, ctx);
+      }
+      if(!options.loop)
+      {
+        break;
+      }
       sleep_until(std::chrono::steady_clock::now() + 1s);
     }
     return;
@@ -180,7 +197,10 @@ replay(Options const& options,
   // 播放整个数据
   do
   {
-    if(water) { water->reset(); }
+    if(water)
+    {
+      water->reset();
+    }
     auto const first_time = frames.front().log_time;
     auto const start = std::chrono::steady_clock::now();
     std::size_t poses = 0;
@@ -282,7 +302,8 @@ run(Options const& options, coverage_path_planning::Footprint const& footprint)
       {
         log::info("Connect Foxglove to ws://{}:{}; in the 3D panel set "
                   "Fixed frame={}, Display frame={}, enable "
-                  "/tf, /planning/footprint, /planning/trajectory and /planning/water_leak; "
+                  "/tf, /planning/footprint, /planning/trajectory and "
+                  "/planning/water_leak; "
                   "plot velocity from /planning/odometry",
                   options.host,
                   options.port,

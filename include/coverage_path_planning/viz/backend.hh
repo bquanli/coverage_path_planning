@@ -30,7 +30,8 @@ public:
   void trajectory(Points3, DrawContext);
   void trajectory_footprints(std::span<Points3 const>, DrawContext);
   void footprint(Points3, DrawContext);
-  void water_leak(WaterLeakView const&, DrawContext);
+  void
+  water_leak(WaterLeakView const&, DrawContext);
   void
   odometry(RobotOdometry const&, DrawContext);
 

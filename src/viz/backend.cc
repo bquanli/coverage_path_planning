@@ -518,7 +518,10 @@ Backend::footprint(Points3 vertices, DrawContext ctx)
 void
 Backend::water_leak(WaterLeakView const& view, DrawContext ctx)
 {
-  if(!resources_) { return; }
+  if(!resources_)
+  {
+    return;
+  }
   try
   {
     auto& r = *resources_;
@@ -529,7 +532,9 @@ Backend::water_leak(WaterLeakView const& view, DrawContext ctx)
       report_error("water_leak", "timestamp must strictly increase");
       return;
     }
-    auto const frame = ctx.frame_id.empty() ? std::string_view(r.config.default_frame) : ctx.frame_id;
+    auto const frame = ctx.frame_id.empty()
+                           ? std::string_view(r.config.default_frame)
+                           : ctx.frame_id;
     fmsg::SceneUpdate message;
     try
     {
@@ -541,8 +546,14 @@ Backend::water_leak(WaterLeakView const& view, DrawContext ctx)
       message = make_water_leak_update({}, frame, stamp);
     }
     auto const error = r.water_leak->log(message, stamp);
-    if(error == Error::Ok) { r.water_leak_state.last_stamp = stamp; }
-    else { report_error("water_leak", foxglove::strerror(error)); }
+    if(error == Error::Ok)
+    {
+      r.water_leak_state.last_stamp = stamp;
+    }
+    else
+    {
+      report_error("water_leak", foxglove::strerror(error));
+    }
   }
   catch(std::exception const& ex)
   {

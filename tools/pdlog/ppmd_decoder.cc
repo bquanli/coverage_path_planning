@@ -66,9 +66,7 @@ struct PpmdDecoder::Impl
   std::filesystem::path source;
   bool saw_end_marker = false;
 
-  Impl(FILE* input,
-       PpmdParameters parameters,
-       std::filesystem::path  path)
+  Impl(FILE* input, PpmdParameters parameters, std::filesystem::path path)
     : reader{{readByte}, input}
     , source(std::move(path))
   {
@@ -80,7 +78,8 @@ struct PpmdDecoder::Impl
     }
 
     model.value.Stream.In = &reader.interface;
-    if(Ppmd8_Alloc(&model.value, parameters.memory_mib << 20U, &g_BigAlloc) == 0)
+    if(Ppmd8_Alloc(&model.value, parameters.memory_mib << 20U, &g_BigAlloc) ==
+       0)
     {
       throw std::runtime_error("cannot allocate " +
                                std::to_string(parameters.memory_mib) +

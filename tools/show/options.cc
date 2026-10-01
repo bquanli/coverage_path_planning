@@ -67,9 +67,18 @@ load_options()
   options.show_trajectory = required<bool>(replay, "show_trajectory");
   if(auto const water = yaml["water_leak"])
   {
-    if(!water.IsMap()) { throw std::invalid_argument("water_leak must be a map"); }
-    if(water["enabled"]) { options.water_leak_enabled = water["enabled"].as<bool>(); }
-    if(water["suction"]) { options.suction = water["suction"].as<bool>(); }
+    if(!water.IsMap())
+    {
+      throw std::invalid_argument("water_leak must be a map");
+    }
+    if(water["enabled"])
+    {
+      options.water_leak_enabled = water["enabled"].as<bool>();
+    }
+    if(water["suction"])
+    {
+      options.suction = water["suction"].as<bool>();
+    }
   }
   if(!std::isfinite(options.speed) || options.speed < 0.0 ||
      !std::isfinite(options.frame_rate_hz) || options.frame_rate_hz <= 0.0 ||

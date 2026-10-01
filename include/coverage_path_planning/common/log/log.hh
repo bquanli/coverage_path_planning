@@ -73,15 +73,16 @@ new_log_path(std::string const& directory)
   localtime_r(&time, &local_time);
   auto const pid = getpid();
 #endif
-  auto const milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(
-      now.time_since_epoch()) % std::chrono::seconds(1);
+  auto const milliseconds =
+      std::chrono::duration_cast<std::chrono::milliseconds>(
+          now.time_since_epoch()) %
+      std::chrono::seconds(1);
 
   std::ostringstream name;
   name << "coverage_path_planning_"
-       << std::put_time(&local_time, "%Y-%m-%d_%H-%M-%S") << '_'
-       << std::setw(3) << std::setfill('0') << milliseconds.count() << '_'
-       << pid << '_' << sequence.fetch_add(1, std::memory_order_relaxed)
-       << ".log";
+       << std::put_time(&local_time, "%Y-%m-%d_%H-%M-%S") << '_' << std::setw(3)
+       << std::setfill('0') << milliseconds.count() << '_' << pid << '_'
+       << sequence.fetch_add(1, std::memory_order_relaxed) << ".log";
   return std::filesystem::path(directory) / name.str();
 }
 
@@ -108,8 +109,7 @@ make_logger(Options const& options)
   }
   if(sinks.empty())
   {
-    throw std::invalid_argument(
-        "log: enable console or file output");
+    throw std::invalid_argument("log: enable console or file output");
   }
 
   auto result = std::make_shared<spdlog::logger>("coverage_path_planning",

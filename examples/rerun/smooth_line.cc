@@ -86,15 +86,18 @@ main()
 
     // 这几个数字比图更能说明优化到底有没有生效。
     std::printf("converged   : %s\n", result.converged ? "yes" : "no");
-    std::printf("iterations  : %zu / %zu\n", result.iterations,
+    std::printf("iterations  : %zu / %zu\n",
+                result.iterations,
                 options.max_iter);
-    std::printf("max step    : %.3e (tolerance %.3e)\n", result.max_step,
+    std::printf("max step    : %.3e (tolerance %.3e)\n",
+                result.max_step,
                 options.tolerance);
     std::printf("cost        : %.6f -> %.6f\n",
                 smoothing_cost(origin, origin, options),
                 smoothing_cost(result.points, origin, options));
     std::printf("max offset  : %.6f (radius %.3f)\n",
-                max_offset(result.points, origin), options.radius);
+                max_offset(result.points, origin),
+                options.radius);
 
     rerun::RecordingStream const rec("smooth_line");
     rec.spawn().exit_on_failure();
