@@ -20,3 +20,8 @@ target_link_libraries(smooth_line
     coverage_path_planning::planning
     coverage_path_planning::warnings
 )
+add_executable(min_square min_square.cc)
+target_link_libraries(min_square
+    PRIVATE
+    coverage_path_planning::rerun
+)
