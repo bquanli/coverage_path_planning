@@ -1,235 +1,438 @@
 #!/usr/bin/env python3
-"""弓形覆盖路径规划：离散 Boustrophedon 分区 + 区内往返 + 区间 A*。
+"""弓形覆盖路径规划：适合 Python 新手阅读的完整演示。
 
-依赖：python -m pip install numpy matplotlib pillow
-运行：python boustrophedon_demo.py
-空矩形：python boustrophedon_demo.py --scene empty
-保存：python boustrophedon_demo.py --gif demo.gif --png overview.png --no-show
+需要 Python 3.10 或更高版本。
+安装依赖：python -m pip install numpy matplotlib pillow
+运行演示：python boustrophedon_demo_beginner.py
+空白地图：python boustrophedon_demo_beginner.py --scene empty
+仅做验证：python boustrophedon_demo_beginner.py --no-show
+保存图片：python boustrophedon_demo_beginner.py --png overview.png --no-show
+保存动画：python boustrophedon_demo_beginner.py --gif demo.gif --no-show
 
-教学模型：
-  * free[y, x] == True 表示机器人中心可以访问的栅格；使用四邻接移动。
-  * 覆盖率 = 已访问的不同自由栅格 / 全部自由栅格，不等同于圆形清洁盘的扫掠面积。
-  * 逐行分区使用区间重叠关系；只有一对一连接才延续原子区域。
-  * 在每个子区域内扫描全部行。栅格分辨率同时是相邻扫描行间距。
-  * 区域顺序按到入口的 A* 路径长度贪心选择，不保证全局最短。
-  * 未模拟机器人外形、障碍物膨胀、速度或最小转弯半径。
-  * 地图必须是单个四连通自由区域；不连通时显式报错。
+阅读顺序：make_map -> decompose -> astar -> sweep_cell -> plan_coverage。
+validate 负责检查结果，make_figure 负责绘图，main 负责组织程序。
 
-参考：Choset & Pignon, Coverage Path Planning: The Boustrophedon
-Decomposition (1997), https://publications.ri.cmu.edu/
-coverage-path-planning-the-boustrophedon-decomposition
-"""
+模型约定：
+1. free[y, x] 为 True，表示机器人中心可以访问这个栅格。
+2. Point 使用 (x, y)，但 NumPy 数组使用 [y, x] 访问。
+3. 只允许四邻接移动：右、上、左、下，不允许斜向移动。
+4. 覆盖率按实际访问的自由栅格数量计算，不是清洁盘的扫掠面积。
+5. 贪心选择最近区域入口，不保证总路径最短。
+6. 不模拟机器人外形、障碍膨胀和转弯半径。
+7. 自由空间不连通时，程序明确报错。
+"""  # noqa: EXE001
 
 from __future__ import annotations
 
 import argparse
 import heapq
+import math
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
+from matplotlib.artist import Artist
+from matplotlib.figure import Figure
+from numpy.typing import NDArray
 
-Point = tuple[int, int]  # (x, y)，数组访问顺序则是 [y, x]
-Row = tuple[int, int, int]  # (y, x_left, x_right)，左右端点均包含
+# 类型别名只是为类型起一个简短的名字，不会创建数组或坐标。
+Point = tuple[int, int]  # (x, y)
+Row = tuple[int, int, int]  # (y, left, right)，包含左右端点
+Interval = tuple[int, int]  # (left, right)
+ActiveInterval = tuple[int, int, int]  # (left, right, cell_id)
+BoolArray = NDArray[np.bool_]  # 布尔数组；维数由具体变量决定
+IntArray = NDArray[np.int64]
+PlotPoint = tuple[float, float]  # 绘图时的米制坐标
+Segment = list[PlotPoint]  # 一条线段，包含起点和终点
+UpdateFunction = Callable[[int], tuple[Artist, ...]]
 
 
-def make_map(scene: str) -> np.ndarray:
-    """修改这里即可设置自己的地图；默认 30 列、20 行、两个矩形障碍。"""
-    free = np.ones((20, 30), dtype=bool)
+def make_map(scene: str) -> BoolArray:
+    """创建 20 行、30 列的地图；True 是自由空间，False 是障碍。"""
+    free: BoolArray = np.ones((20, 30), dtype=np.bool_)
+
     if scene == "obstacles":
+        # 切片包含起点，不包含终点。例如 4:10 表示索引 4 到 9。
         free[4:10, 7:12] = False
         free[12:17, 19:25] = False
+
     return free
 
 
-def row_intervals(row: np.ndarray) -> list[tuple[int, int]]:
-    """把一行的 True 切成连续区间，例如 110111 -> [(0,1), (3,5)]。"""
-    changes = np.diff(np.r_[0, row.astype(np.int8), 0])
-    return list(zip(np.flatnonzero(changes == 1), np.flatnonzero(changes == -1) - 1))  # type: ignore
+def row_intervals(row: BoolArray) -> list[Interval]:
+    """例如 [True, True, False, True] 对应 [(0, 1), (3, 3)]。"""
+    intervals: list[Interval] = []
+    left: int | None = None
+
+    for x in range(len(row)):
+        if row[x]:
+            if left is None:
+                left = x
+        else:
+            if left is not None:
+                intervals.append((left, x - 1))
+                left = None
+
+    # 扫描到行末时，最后一个自由区间可能还没有结束。
+    if left is not None:
+        intervals.append((left, len(row) - 1))
+
+    return intervals
 
 
-def decompose(free: np.ndarray) -> tuple[np.ndarray, list[list[Row]]]:
-    """从下向上扫线：区间出生、消失、分裂或合并时结束/新建子区域。
-
-    关键是比较相邻两行的连接关系，而不仅比较区间数量。
-    labels[y,x] 为子区域编号，障碍物为 -1；cells 保存各区的扫描行。
+def decompose(free: BoolArray) -> tuple[IntArray, list[list[Row]]]:
     """
-    labels = np.full(free.shape, -1, dtype=int)
+    逐行扫描，把自由空间分解成子区域。
+
+    free[y, x]：
+        True  表示自由空间
+        False 表示障碍物
+
+    返回：
+        labels：每个栅格所属的子区域编号，障碍物为 -1
+        cells：每个子区域包含的扫描区间
+    """
+    # 创建与地图同样大小的数组，初始值全部为 -1
+    labels: IntArray = np.full(free.shape, -1, dtype=np.int64)
+    # cells[cell_id] 保存某个子区域的所有扫描区间
+    # 每个扫描区间表示为 (y, left, right)
     cells: list[list[Row]] = []
-    previous: list[tuple[int, int, int]] = []  # (left, right, cell_id)
-    for y, row in enumerate(free):
+    previous: list[ActiveInterval] = []
+
+    for y in range(free.shape[0]):
+        row = free[y]
         intervals = row_intervals(row)
-        parents = [
-            [
-                j
-                for j, (pl, pr, _) in enumerate(previous)
-                if max(left, pl) <= min(right, pr)
-            ]
-            for left, right in intervals
-        ]
-        child_count = [
-            sum(j in group for group in parents) for j in range(len(previous))
-        ]
-        current = []
-        for (left, right), group in zip(intervals, parents):
-            if len(group) == 1 and child_count[group[0]] == 1:
-                cell_id = previous[group[0]][2]
-            else:
+
+        # parents[i]：当前区间 i 连接了上一行的哪些区间。
+        # 保存的是 previous 的索引，不是子区域编号。
+        parents: list[list[int]] = []
+        for left, right in intervals:
+            parent_indices: list[int] = []
+            for j in range(len(previous)):
+                previous_left = previous[j][0]
+                previous_right = previous[j][1]
+                overlap_left = max(left, previous_left)
+                overlap_right = min(right, previous_right)
+                if overlap_left <= overlap_right:
+                    parent_indices.append(j)
+            parents.append(parent_indices)
+
+        # child_count[j]：上一行区间 j 有多少个子区间。
+        child_count: list[int] = [0] * len(previous)
+        for parent_indices in parents:
+            for parent_index in parent_indices:
+                child_count[parent_index] += 1
+
+        current: list[ActiveInterval] = []
+        for i in range(len(intervals)):
+            left, right = intervals[i]
+            parent_indices = parents[i]
+
+            # None 表示还没有找到可以继承的区域编号。
+            # 这样避免用另一个布尔变量间接判断 parent_index 是否已赋值。
+            inherited_cell_id: int | None = None
+            if len(parent_indices) == 1:
+                parent_index = parent_indices[0]
+                if child_count[parent_index] == 1:
+                    inherited_cell_id = previous[parent_index][2]
+
+            if inherited_cell_id is None:
                 cell_id = len(cells)
                 cells.append([])
-            labels[y, left : right + 1] = cell_id
-            cells[cell_id].append((y, int(left), int(right)))
+            else:
+                cell_id = inherited_cell_id
+
+            for x in range(left, right + 1):
+                labels[y, x] = cell_id
+            cells[cell_id].append((y, left, right))
             current.append((left, right, cell_id))
+
         previous = current
+
     return labels, cells
 
 
-def astar(free: np.ndarray, start: Point, goal: Point) -> list[Point] | None:
-    """四邻接 A*：只负责两点间连接，不负责决定哪些区域需要覆盖。"""
-    h, w = free.shape
+def astar(free: BoolArray, start: Point, goal: Point) -> list[Point] | None:
+    """用四邻接 A* 连接两点；返回的路径包含起点和终点。"""
+    height, width = free.shape
 
-    def distance(p):
-        return abs(p[0] - goal[0]) + abs(p[1] - goal[1])
+    # 先检查端点，避免负索引或障碍物起点被误认为合法。
+    for x, y in (start, goal):
+        if x < 0 or x >= width or y < 0 or y >= height:
+            return None
+        if not free[y, x]:
+            return None
 
-    queue = [(distance(start), 0, start)]
-    cost = {start: 0}
+    def distance_to_goal(point: Point) -> int:
+        """曼哈顿距离：横向距离加纵向距离。"""
+        horizontal_distance = abs(point[0] - goal[0])
+        vertical_distance = abs(point[1] - goal[1])
+        return horizontal_distance + vertical_distance
+
+    # 优先队列元素：(估计总代价 f，已走代价 g，坐标)。
+    # heapq 每次弹出最小项；f 相同时再按后续字段比较。
+    queue: list[tuple[int, int, Point]] = []
+    heapq.heappush(queue, (distance_to_goal(start), 0, start))
+    cost: dict[Point, int] = {start: 0}
     parent: dict[Point, Point] = {}
-    while queue:
-        _, g, point = heapq.heappop(queue)
-        if g != cost[point]:
+    directions: list[Point] = [(1, 0), (0, 1), (-1, 0), (0, -1)]
+
+    while len(queue) > 0:
+        entry = heapq.heappop(queue)
+        current_cost = entry[1]
+        point = entry[2]
+
+        # 同一个点可能先后以不同代价入队；跳过已经过期的记录。
+        if current_cost != cost[point]:
             continue
+
         if point == goal:
-            path = [point]
+            path: list[Point] = [point]
             while point != start:
                 point = parent[point]
                 path.append(point)
-            return path[::-1]
+            # 上面从终点回溯到起点，所以需要把列表反转。
+            path.reverse()
+            return path
+
         x, y = point
-        for dx, dy in ((1, 0), (0, 1), (-1, 0), (0, -1)):
-            q = (x + dx, y + dy)
-            nx, ny = q
-            if not (0 <= nx < w and 0 <= ny < h and free[ny, nx]):
+        for dx, dy in directions:
+            next_x = x + dx
+            next_y = y + dy
+            if next_x < 0 or next_x >= width:
                 continue
-            ng = g + 1
-            if ng < cost.get(q, float("inf")):
-                cost[q] = ng
-                parent[q] = point
-                heapq.heappush(queue, (ng + distance(q), ng, q))
+            if next_y < 0 or next_y >= height:
+                continue
+            if not free[next_y, next_x]:
+                continue
+
+            next_point: Point = (next_x, next_y)
+            next_cost = current_cost + 1
+            old_cost = cost.get(next_point)
+            if old_cost is not None and next_cost >= old_cost:
+                continue
+
+            cost[next_point] = next_cost
+            parent[next_point] = point
+            estimated_total = next_cost + distance_to_goal(next_point)
+            heapq.heappush(queue, (estimated_total, next_cost, next_point))
+
     return None
 
 
 def sweep_cell(
-    rows: list[Row], mask: np.ndarray, top_down: bool, start_right: bool
+    rows: list[Row],
+    mask: BoolArray,
+    top_down: bool,
+    start_right: bool,
 ) -> list[Point]:
-    """生成区内弓形路径：当前行左->右，下一行右->左，交替往返。
+    """逐行往返覆盖一个子区域，用区域内部的 A* 连接相邻扫描行。
 
-    相邻行边界不齐时，使用限制在本区域内的 A* 连接行端点。
-    四种 (top_down, start_right) 组合对应四个入口方向。
+    rows 按 y 从小到大保存；图中 y 向上增长。
+    top_down=True：先扫描 y 最大的行，即从上向下。
+    start_right=True：第一行从右端开始，向左移动。
     """
-    ordered = rows[::-1] if top_down else rows
+    ordered_rows = rows.copy()
+    if top_down:
+        ordered_rows.reverse()
+
     path: list[Point] = []
-    for i, (y, left, right) in enumerate(ordered):
-        xs = range(left, right + 1)
-        if start_right ^ bool(i % 2):
-            xs = range(right, left - 1, -1)
-        strip = [(x, y) for x in xs]
-        if path:
+    right_to_left = start_right
+
+    for y, left, right in ordered_rows:
+        if right_to_left:
+            x_values = range(right, left - 1, -1)
+        else:
+            x_values = range(left, right + 1)
+
+        strip: list[Point] = []
+        for x in x_values:
+            strip.append((x, y))
+
+        if len(path) == 0:
+            path.extend(strip)
+        else:
             connector = astar(mask, path[-1], strip[0])
             if connector is None:
                 raise RuntimeError("子区域内部不连通，请检查分区。")
-            path.extend(connector[1:])
-            path.extend(strip[1:])
-        else:
-            path.extend(strip)
+
+            # connector[0] 已经是 path 的最后一个点，不重复添加。
+            for index in range(1, len(connector)):
+                path.append(connector[index])
+            # 连接完成后已经到达 strip[0]，也不重复添加。
+            for index in range(1, len(strip)):
+                path.append(strip[index])
+
+        # 下一行换方向，形成往复的弓形路径。
+        right_to_left = not right_to_left
+
     return path
 
 
 @dataclass
 class Plan:
-    labels: np.ndarray
+    """dataclass 自动生成初始化方法，用来集中保存规划结果。"""
+
+    labels: IntArray
     cells: list[list[Row]]
-    path: np.ndarray
-    transit: np.ndarray  # transit[k]：到达 path[k] 的边是否为区间连接
+    path: IntArray  # 形状为 (路径点数量, 2)，每行是 (x, y)
+    transit: BoolArray  # 一维数组；第 k 项表示到达 path[k] 的边是否为区域间连接
     order: list[int]
 
 
-def plan_coverage(free: np.ndarray, start: Point) -> Plan:
-    """生成候选区内路径，并贪心选择最近的下一个区域入口。"""
+@dataclass
+class RouteChoice:
+    """记录当前找到的最佳候选，避免含义难辨的多层元组。"""
+
+    key: tuple[int, int, int]
+    cell_id: int
+    route: list[Point]
+    link: list[Point]
+
+
+def plan_coverage(free: BoolArray, start: Point) -> Plan:
+    """生成每个区域的四种覆盖路径，然后贪心选择最近的入口。"""
     if free.ndim != 2 or not free.any():
         raise ValueError("地图需要是非空二维自由栅格图。")
+
     x, y = start
-    h, w = free.shape
-    if not (0 <= x < w and 0 <= y < h and free[y, x]):
+    height, width = free.shape
+    if x < 0 or x >= width or y < 0 or y >= height:
+        raise ValueError("起点超出了地图范围。")
+    if not free[y, x]:
         raise ValueError("起点必须位于自由栅格。")
+
     labels, cells = decompose(free)
-    candidates = {
-        cid: [
-            sweep_cell(rows, labels == cid, top_down, start_right)
-            for top_down in (False, True)
-            for start_right in (False, True)
-        ]
-        for cid, rows in enumerate(cells)
-    }
-    path, transit, order = [start], [False], []
-    while candidates:
-        best = None
-        for cid, routes in candidates.items():
-            for index, route in enumerate(routes):
-                link = astar(free, path[-1], route[0])
+
+    # 字典：区域编号 -> 该区域的四种候选路径。
+    candidates: dict[int, list[list[Point]]] = {}
+    for cell_id in range(len(cells)):
+        rows = cells[cell_id]
+        mask: BoolArray = labels == cell_id
+        routes: list[list[Point]] = []
+        for top_down in (False, True):
+            for start_right in (False, True):
+                route = sweep_cell(rows, mask, top_down, start_right)
+                routes.append(route)
+        candidates[cell_id] = routes
+
+    path: list[Point] = [start]
+    transit: list[bool] = [False]
+    order: list[int] = []
+
+    while len(candidates) > 0:
+        best: RouteChoice | None = None
+        current_position = path[-1]
+
+        for cell_id in candidates:  # noqa: PLC0206
+            routes = candidates[cell_id]
+            for route_index in range(len(routes)):
+                route = routes[route_index]
+                link = astar(free, current_position, route[0])
                 if link is None:
                     continue
-                key = (len(link), cid, index)  # 后两项保证结果可复现
-                if best is None or key < best[0]:
-                    best = (key, cid, route, link)
+
+                # 元组从左向右比较：先比连接长度，再比区域和候选编号。
+                # 后两项用于平局时固定选择，使结果可复现。
+                key = (len(link), cell_id, route_index)
+                if best is None or key < best.key:
+                    best = RouteChoice(key, cell_id, route, link)
+
         if best is None:
             raise ValueError("存在起点无法到达的自由区域；无法用一条路径覆盖。")
-        _, cid, route, link = best
-        path.extend(link[1:])
-        transit.extend([True] * (len(link) - 1))
-        path.extend(route[1:])
-        transit.extend([False] * (len(route) - 1))
-        order.append(cid)
-        del candidates[cid]
+
+        for index in range(1, len(best.link)):
+            path.append(best.link[index])
+            transit.append(True)
+        for index in range(1, len(best.route)):
+            path.append(best.route[index])
+            transit.append(False)
+
+        order.append(best.cell_id)
+        del candidates[best.cell_id]
+
     return Plan(
-        labels,
-        cells,
-        np.asarray(path, dtype=int),
-        np.asarray(transit, dtype=bool),
-        order,
+        labels=labels,
+        cells=cells,
+        path=np.asarray(path, dtype=np.int64),
+        transit=np.asarray(transit, dtype=np.bool_),
+        order=order,
     )
 
 
-def validate(free: np.ndarray, plan: Plan) -> dict:
-    """检查实际路径上的每一步，不能用计划覆盖面积代替实际访问率。"""
-    p = plan.path
-    if not np.all(free[p[:, 1], p[:, 0]]):
-        raise AssertionError("路径进入障碍物。")
-    if not np.all(np.abs(np.diff(p, axis=0)).sum(axis=1) == 1):
-        raise AssertionError("路径存在跳跃或重复相邻点。")
-    visited = np.zeros_like(free)
-    visited[p[:, 1], p[:, 0]] = True
-    if not np.array_equal(visited, free):
-        raise AssertionError("存在遗漏的自由栅格。")
+def validate(free: BoolArray, plan: Plan) -> dict[str, int]:
+    """逐点检查：路径合法、四邻接连续，并且访问所有自由栅格。"""
+    if plan.path.ndim != 2 or plan.path.shape[1] != 2:
+        raise AssertionError("路径必须是 N 行、2 列的坐标数组。")
+    if len(plan.path) == 0:
+        raise AssertionError("路径不能为空。")
+    if plan.transit.ndim != 1 or len(plan.transit) != len(plan.path):
+        raise AssertionError("transit 必须是一维数组，并且与路径点数量相同。")
+
+    height, width = free.shape
+    visited: BoolArray = np.zeros_like(free)
+    for index in range(len(plan.path)):
+        x = int(plan.path[index, 0])
+        y = int(plan.path[index, 1])
+        if x < 0 or x >= width or y < 0 or y >= height:
+            raise AssertionError("路径超出了地图范围。")
+        if not free[y, x]:
+            raise AssertionError("路径进入障碍物。")
+
+        if index > 0:
+            previous_x = int(plan.path[index - 1, 0])
+            previous_y = int(plan.path[index - 1, 1])
+            step_distance = abs(x - previous_x) + abs(y - previous_y)
+            if step_distance != 1:
+                raise AssertionError("路径存在跳跃或重复相邻点。")
+
+        visited[y, x] = True
+
+    free_grids = 0
+    visited_grids = 0
+    for y in range(height):
+        for x in range(width):
+            if free[y, x]:
+                free_grids += 1
+                if not visited[y, x]:
+                    raise AssertionError("存在遗漏的自由栅格。")
+            if visited[y, x]:
+                visited_grids += 1
+
+    transit_steps = 0
+    for index in range(1, len(plan.transit)):
+        if plan.transit[index]:
+            transit_steps += 1
+
     return {
-        "free_grids": int(free.sum()),
-        "visited_grids": int(visited.sum()),
+        "free_grids": free_grids,
+        "visited_grids": visited_grids,
         "cells": len(plan.cells),
-        "steps": len(p) - 1,
-        "transit_steps": int(plan.transit.sum()),
-        "revisits": len(p) - int(visited.sum()),
+        "steps": len(plan.path) - 1,
+        "transit_steps": transit_steps,
+        "revisits": len(plan.path) - visited_grids,
     }
 
 
-def make_figure(free: np.ndarray, plan: Plan, resolution: float):
-    """三联图：分区结果、完整路径、实际覆盖过程。图内英文以避免字体依赖。"""
+def make_figure(
+    free: BoolArray, plan: Plan, resolution: float
+) -> tuple[Figure, UpdateFunction]:
+    """绘制分区、完整路径和覆盖回放，并返回更新某一帧的函数。"""
+    # pyplot 在 main 选择后端之后才导入，以支持 --no-show。
     import matplotlib.pyplot as plt
+    from matplotlib.axes import Axes
     from matplotlib.collections import LineCollection
     from matplotlib.colors import ListedColormap
     from matplotlib.lines import Line2D
     from matplotlib.patches import Patch
 
-    ink, blue, orange = "#183047", "#2563b8", "#d97706"
-    wall, blank, covered = "#334155", "#edf1f5", "#a7dfc6"
+    ink = "#183047"
+    blue = "#2563b8"
+    orange = "#d97706"
+    wall = "#334155"
+    blank = "#edf1f5"
+    covered = "#a7dfc6"
     palette = [
         "#bfdbfe",
         "#bbf7d0",
@@ -250,10 +453,19 @@ def make_figure(free: np.ndarray, plan: Plan, resolution: float):
             "ytick.color": "#64748b",
         }
     )
-    fig, axes = plt.subplots(1, 3, figsize=(14.8, 6.2), facecolor="#fafbfc")
-    fig.subplots_adjust(left=0.045, right=0.985, bottom=0.28, top=0.78, wspace=0.18)
-    fig.text(0.045, 0.935, "Boustrophedon coverage", fontsize=24, weight="bold")
-    fig.text(
+
+    # 分别创建三个 Axes，避免 subplots 多种返回形状带来的类型歧义。
+    figure = plt.figure(figsize=(14.8, 6.2), facecolor="#fafbfc")
+    axes: list[Axes] = []
+    for subplot_number in range(1, 4):
+        axes.append(figure.add_subplot(1, 3, subplot_number))
+    decomposition_axes = axes[0]
+    path_axes = axes[1]
+    replay_axes = axes[2]
+
+    figure.subplots_adjust(left=0.045, right=0.985, bottom=0.28, top=0.78, wspace=0.18)
+    figure.text(0.045, 0.935, "Boustrophedon coverage", fontsize=24, weight="bold")
+    figure.text(
         0.045,
         0.875,
         "Split at connectivity changes. Sweep each cell. Connect the cells with A*.",
@@ -261,31 +473,43 @@ def make_figure(free: np.ndarray, plan: Plan, resolution: float):
         color="#526476",
     )
 
-    h, w = free.shape
-    extent = (0, w * resolution, 0, h * resolution)
-    titles = (
+    height, width = free.shape
+    extent = (0.0, width * resolution, 0.0, height * resolution)
+    titles = [
         "1 / Sweep-line decomposition",
         "2 / Planned motion",
         "3 / Coverage replay",
-    )
-    for ax, title in zip(axes, titles):
-        ax.set_title(title, loc="left", fontsize=12, weight="bold", pad=14)
-        ax.set_xlim(extent[:2])
-        ax.set_ylim(extent[2:])
-        ax.set_aspect("equal")
-        ax.set_xlabel("x [m]", fontsize=9)
-        ax.set_ylabel("y [m]", fontsize=9, labelpad=2)
-        ax.tick_params(labelsize=8, length=3)
-        for spine in ax.spines.values():
-            spine.set_color("#b9c4cf")
-        # 栅格线帮助看清覆盖率按自由栅格统计，关闭 minor tick 本身。
-        ax.set_xticks(np.arange(w + 1) * resolution, minor=True)
-        ax.set_yticks(np.arange(h + 1) * resolution, minor=True)
-        ax.grid(which="minor", color="white", linewidth=0.35, alpha=0.45)
-        ax.tick_params(which="minor", length=0)
+    ]
+    x_ticks: list[float] = []
+    y_ticks: list[float] = []
+    for x in range(width + 1):
+        x_ticks.append(x * resolution)
+    for y in range(height + 1):
+        y_ticks.append(y * resolution)
 
-    colors = [wall] + [palette[i % len(palette)] for i in range(len(plan.cells))]
-    axes[0].imshow(
+    for index in range(len(axes)):
+        axis = axes[index]
+        axis.set_title(titles[index], loc="left", fontsize=12, weight="bold", pad=14)
+        axis.set_xlim(extent[0], extent[1])
+        axis.set_ylim(extent[2], extent[3])
+        axis.set_aspect("equal")
+        axis.set_xlabel("x [m]", fontsize=9)
+        axis.set_ylabel("y [m]", fontsize=9, labelpad=2)
+        axis.tick_params(labelsize=8, length=3)
+        for spine in axis.spines.values():
+            spine.set_color("#b9c4cf")
+        axis.set_xticks(x_ticks, minor=True)
+        axis.set_yticks(y_ticks, minor=True)
+        axis.grid(which="minor", color="white", linewidth=0.35, alpha=0.45)
+        axis.tick_params(which="minor", length=0)
+
+    colors: list[str] = [wall]
+    for cell_id in range(len(plan.cells)):
+        palette_index = cell_id % len(palette)
+        colors.append(palette[palette_index])
+
+    # labels 中障碍为 -1，加 1 后，障碍对应颜色表的第 0 项。
+    decomposition_axes.imshow(
         plan.labels + 1,
         origin="lower",
         extent=extent,
@@ -294,13 +518,16 @@ def make_figure(free: np.ndarray, plan: Plan, resolution: float):
         vmax=len(plan.cells),
         interpolation="nearest",
     )
-    for cid, rows in enumerate(plan.cells):
-        # 标签放到子区域中间的一条扫描行，保证文字位于实际自由区域。
-        y, left, right = rows[len(rows) // 2]
-        axes[0].text(
-            (left + right + 1) * resolution / 2,
-            (y + 0.5) * resolution,
-            f"C{cid + 1}",
+    for cell_id in range(len(plan.cells)):
+        rows = plan.cells[cell_id]
+        middle_row = rows[len(rows) // 2]
+        y, left, right = middle_row
+        label_x = (left + right + 1) * resolution / 2
+        label_y = (y + 0.5) * resolution
+        decomposition_axes.text(
+            label_x,
+            label_y,
+            f"C{cell_id + 1}",
             ha="center",
             va="center",
             fontsize=10,
@@ -313,8 +540,15 @@ def make_figure(free: np.ndarray, plan: Plan, resolution: float):
             },
         )
 
-    base = np.where(free, 1, 0)
-    axes[1].imshow(
+    # 绘图编码：0 是障碍，1 是尚未访问，2 是已访问。
+    base: IntArray = np.zeros(free.shape, dtype=np.int64)
+    number_of_free_grids = 0
+    for y in range(height):
+        for x in range(width):
+            if free[y, x]:
+                base[y, x] = 1
+                number_of_free_grids += 1
+    path_axes.imshow(
         base,
         origin="lower",
         extent=extent,
@@ -323,28 +557,44 @@ def make_figure(free: np.ndarray, plan: Plan, resolution: float):
         vmax=1,
         interpolation="nearest",
     )
-    xy = (plan.path + 0.5) * resolution  # 路径通过栅格中心
-    edges = np.stack([xy[:-1], xy[1:]], axis=1)
-    is_link = plan.transit[1:]
-    axes[1].add_collection(
-        LineCollection(edges[~is_link], colors=blue, linewidths=1.2, zorder=4)  # type: ignore
+
+    # 整数坐标代表栅格索引；加 0.5 后位于栅格中心。
+    plot_points: list[PlotPoint] = []
+    for index in range(len(plan.path)):
+        grid_x = int(plan.path[index, 0])
+        grid_y = int(plan.path[index, 1])
+        plot_points.append(((grid_x + 0.5) * resolution, (grid_y + 0.5) * resolution))
+
+    sweep_segments: list[Segment] = []
+    link_segments: list[Segment] = []
+    for index in range(1, len(plot_points)):
+        segment = [plot_points[index - 1], plot_points[index]]
+        if plan.transit[index]:
+            link_segments.append(segment)
+        else:
+            sweep_segments.append(segment)
+
+    path_axes.add_collection(
+        LineCollection(sweep_segments, colors=blue, linewidths=1.2, zorder=4)
     )
-    axes[1].add_collection(
+    path_axes.add_collection(
         LineCollection(
-            edges[is_link],  # type: ignore
+            link_segments,
             colors=orange,
             linewidths=2.2,
             linestyles="dashed",
-            zorder=5,  # type: ignore
+            zorder=5,
         )
     )
-    for i in range(7, len(edges), 15):
-        if not is_link[i] and plan.path[i, 1] == plan.path[i + 1, 1]:
-            a, b = edges[i]
-            axes[1].annotate(
+    # 每隔若干条边，在水平覆盖路径上画一个方向箭头。
+    for index in range(7, len(plot_points) - 1, 15):
+        is_transfer = bool(plan.transit[index + 1])
+        is_horizontal = plan.path[index, 1] == plan.path[index + 1, 1]
+        if not is_transfer and is_horizontal:
+            path_axes.annotate(
                 "",
-                xy=b,
-                xytext=a,
+                xy=plot_points[index + 1],
+                xytext=plot_points[index],
                 arrowprops={
                     "arrowstyle": "-|>",
                     "color": blue,
@@ -353,17 +603,26 @@ def make_figure(free: np.ndarray, plan: Plan, resolution: float):
                 },
                 zorder=6,
             )
-    for index, marker, color, text in (
+
+    # 每个元组依次表示：路径索引、标记形状、颜色、文字。
+    endpoint_styles = [
         (0, "o", "#13866b", "S"),
         (-1, "s", "#b23d50", "F"),
-    ):
-        px, py = xy[index]
-        axes[1].plot(
-            px, py, marker=marker, color=color, ms=7, markeredgecolor="white", zorder=7
+    ]
+    for index, marker, color, label in endpoint_styles:
+        position = plot_points[index]
+        path_axes.plot(
+            [position[0]],
+            [position[1]],
+            marker=marker,
+            color=color,
+            markersize=7,
+            markeredgecolor="white",
+            zorder=7,
         )
-        axes[1].annotate(
-            text,
-            (px, py),
+        path_axes.annotate(
+            label,
+            position,
             xytext=(7, 6),
             textcoords="offset points",
             weight="bold",
@@ -372,7 +631,7 @@ def make_figure(free: np.ndarray, plan: Plan, resolution: float):
             zorder=8,
         )
 
-    coverage_image = axes[2].imshow(
+    coverage_image = replay_axes.imshow(
         base,
         origin="lower",
         extent=extent,
@@ -383,98 +642,147 @@ def make_figure(free: np.ndarray, plan: Plan, resolution: float):
     )
     sweep_trail = LineCollection([], colors=blue, linewidths=1.15, zorder=4)
     link_trail = LineCollection([], colors=orange, linewidths=2, zorder=5)
-    axes[2].add_collection(sweep_trail)
-    axes[2].add_collection(link_trail)
-    (robot,) = axes[2].plot(
+    replay_axes.add_collection(sweep_trail)
+    replay_axes.add_collection(link_trail)
+    robot_lines = replay_axes.plot(
         [],
         [],
         "o",
         color="#c43b50",
-        ms=9,
+        markersize=9,
         markeredgecolor="white",
         markeredgewidth=1.5,
         zorder=8,
     )
+    robot = robot_lines[0]
 
-    positions = [ax.get_position() for ax in axes]
-    x0, x1, x2 = [p.x0 for p in positions]
-    fig.text(x0, 0.205, "Each color is one sweep cell", color="#526476", fontsize=9)
-    fig.legend(
+    first_panel_x = decomposition_axes.get_position().x0
+    second_panel_x = path_axes.get_position().x0
+    third_panel_x = replay_axes.get_position().x0
+    figure.text(
+        first_panel_x,
+        0.205,
+        "Each color is one sweep cell",
+        color="#526476",
+        fontsize=9,
+    )
+    figure.legend(
         handles=[
             Line2D([], [], color=blue, lw=2, label="Cell sweep"),
             Line2D([], [], color=orange, lw=2, ls="--", label="A* transfer"),
         ],
         loc="lower left",
-        bbox_to_anchor=(x1 - 0.004, 0.188),
+        bbox_to_anchor=(second_panel_x - 0.004, 0.188),
         ncol=2,
         frameon=False,
         fontsize=9,
         columnspacing=1,
     )
-    fig.legend(
+    figure.legend(
         handles=[
             Patch(color=covered, label="Visited"),
             Patch(color=blank, label="Pending"),
             Patch(color=wall, label="Obstacle"),
         ],
         loc="lower left",
-        bbox_to_anchor=(x2 - 0.004, 0.188),
+        bbox_to_anchor=(third_panel_x - 0.004, 0.188),
         ncol=3,
         frameon=False,
         fontsize=9,
         columnspacing=0.8,
         handlelength=1,
     )
-    nfree = int(free.sum())
-    fig.text(
-        x0,
+    figure.text(
+        first_panel_x,
         0.14,
-        f"{len(plan.cells)} cells  /  {nfree} free grids",
+        f"{len(plan.cells)} cells  /  {number_of_free_grids} free grids",
         fontsize=14,
         weight="bold",
     )
-    visit_order = " > ".join(f"C{cid + 1}" for cid in plan.order)
-    fig.text(x0, 0.105, visit_order, fontsize=9, color="#526476")
-    length = (len(xy) - 1) * resolution
-    link_length = int(is_link.sum()) * resolution
-    fig.text(x1, 0.14, f"{length:.1f} m total path", fontsize=14, weight="bold")
-    fig.text(
-        x1,
+    order_names: list[str] = []
+    for cell_id in plan.order:
+        order_names.append(f"C{cell_id + 1}")
+    visit_order = " > ".join(order_names)
+    figure.text(first_panel_x, 0.105, visit_order, fontsize=9, color="#526476")
+
+    total_length = (len(plan.path) - 1) * resolution
+    link_length = len(link_segments) * resolution
+    figure.text(
+        second_panel_x,
+        0.14,
+        f"{total_length:.1f} m total path",
+        fontsize=14,
+        weight="bold",
+    )
+    figure.text(
+        second_panel_x,
         0.105,
-        f"Sweep {length - link_length:.1f} m  +  transfer {link_length:.1f} m",
+        f"Sweep {total_length - link_length:.1f} m  +  transfer {link_length:.1f} m",
         fontsize=9,
         color="#526476",
     )
-    coverage_text = fig.text(x2, 0.14, "", fontsize=14, weight="bold")
-    status_text = fig.text(x2, 0.105, "", fontsize=9, color="#526476")
-    fig.text(
+    coverage_text = figure.text(third_panel_x, 0.14, "", fontsize=14, weight="bold")
+    status_text = figure.text(third_panel_x, 0.105, "", fontsize=9, color="#526476")
+    figure.text(
         0.045,
         0.038,
-        f"GRID MODEL  |  pitch = {resolution:g} m  |  coverage = visited free grids / all free grids"
+        f"GRID MODEL  |  pitch = {resolution:g} m"
+        "  |  coverage = visited free grids / all free grids"
         "  |  point robot; no turning-radius constraint",
         fontsize=8.5,
         color="#667789",
     )
 
-    # 首次访问时间用来重建任意动画帧；动画重播不会错误累计覆盖率。
-    first_visit = np.full(free.shape, len(xy), dtype=int)
-    np.minimum.at(first_visit, (plan.path[:, 1], plan.path[:, 0]), np.arange(len(xy)))
+    # 记录每个栅格第一次被访问的路径索引。
+    # 未访问的栅格初始化为路径长度，比所有合法索引都大。
+    first_visit: IntArray = np.full(free.shape, len(plan.path), dtype=np.int64)
+    for index in range(len(plan.path)):
+        x = int(plan.path[index, 0])
+        y = int(plan.path[index, 1])
+        first_visit[y, x] = min(first_visit[y, x], index)
 
-    def update(k: int):
-        visited = free & (first_visit <= k)
-        coverage_image.set_data(np.where(visited, 2, base))
-        sweep_trail.set_segments(edges[:k][~is_link[:k]])  # type: ignore
-        link_trail.set_segments(edges[:k][is_link[:k]])  # type: ignore
-        robot.set_data([xy[k, 0]], [xy[k, 1]])
-        count = int(visited.sum())
-        coverage_text.set_text(f"{100 * count / nfree:5.1f}% grids visited")
-        px, py = plan.path[k]
-        stage = "TRANSFER" if plan.transit[k] else "SWEEP"
-        if k == len(xy) - 1:
+    def update(frame_index: int) -> tuple[Artist, ...]:
+        """重建指定帧；重复播放或回到开头时，不会错误累加覆盖率。"""
+        display_grid: IntArray = base.copy()
+        visited_count = 0
+        for y in range(height):
+            for x in range(width):
+                if free[y, x] and first_visit[y, x] <= frame_index:
+                    display_grid[y, x] = 2
+                    visited_count += 1
+        coverage_image.set_data(display_grid)
+
+        visible_sweep: list[Segment] = []
+        visible_links: list[Segment] = []
+        for index in range(1, frame_index + 1):
+            segment = [plot_points[index - 1], plot_points[index]]
+            if plan.transit[index]:
+                visible_links.append(segment)
+            else:
+                visible_sweep.append(segment)
+        sweep_trail.set_segments(visible_sweep)
+        link_trail.set_segments(visible_links)
+
+        robot_x, robot_y = plot_points[frame_index]
+        robot.set_data([robot_x], [robot_y])
+        percentage = 100 * visited_count / number_of_free_grids
+        coverage_text.set_text(f"{percentage:5.1f}% grids visited")
+
+        if frame_index == len(plan.path) - 1:
             stage = "COMPLETE"
+        elif plan.transit[frame_index]:
+            stage = "TRANSFER"
+        else:
+            stage = "SWEEP"
+        grid_x = int(plan.path[frame_index, 0])
+        grid_y = int(plan.path[frame_index, 1])
+        cell_number = int(plan.labels[grid_y, grid_x]) + 1
         status_text.set_text(
-            f"{count}/{nfree} grids  |  {stage}  |  C{plan.labels[py, px] + 1}"
+            f"{visited_count}/{number_of_free_grids} grids"
+            f"  |  {stage}  |  C{cell_number}"
         )
+
+        # Matplotlib 的 Artist 指图像、线条、文字等可绘制对象。
         return (
             coverage_image,
             sweep_trail,
@@ -485,10 +793,23 @@ def make_figure(free: np.ndarray, plan: Plan, resolution: float):
         )
 
     update(0)
-    return fig, update
+    return figure, update
 
 
-def main():
+class Arguments(argparse.Namespace):
+    """为命令行参数声明类型，让编辑器知道各个属性的含义。"""
+
+    scene: str = "obstacles"
+    resolution: float = 0.4
+    fps: int = 20
+    stride: int = 4
+    gif: Path | None = None
+    png: Path | None = None
+    no_show: bool = False
+
+
+def main() -> None:
+    """读取参数，规划并检查路径，再按需显示或保存结果。"""
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
@@ -497,62 +818,80 @@ def main():
         "--resolution", type=float, default=0.4, help="栅格边长，单位 m"
     )
     parser.add_argument("--fps", type=int, default=20, help="动画每秒帧数")
-    parser.add_argument("--stride", type=int, default=4, help="每动画帧前进多少路径点")
+    parser.add_argument("--stride", type=int, default=4, help="每帧前进多少路径点")
     parser.add_argument("--gif", type=Path, help="保存 GIF 到此路径")
-    parser.add_argument("--png", type=Path, help="保存完成时的三联图到此路径")
-    parser.add_argument("--no-show", action="store_true", help="不弹窗，适合服务器")
-    args = parser.parse_args()
-    if not np.isfinite(args.resolution) or args.resolution <= 0:
+    parser.add_argument("--png", type=Path, help="保存三联图到此路径")
+    parser.add_argument("--no-show", action="store_true", help="不弹出窗口")
+    args = Arguments()
+    parser.parse_args(namespace=args)
+
+    if not math.isfinite(args.resolution) or args.resolution <= 0:
         parser.error("resolution 必须是有限正数")
     if args.fps < 1 or args.stride < 1:
         parser.error("fps 和 stride 必须大于零")
+
     free = make_map(args.scene)
     plan = plan_coverage(free, start=(0, 0))
     stats = validate(free, plan)
     print(f"scene={args.scene}; {stats}")
-    print(f"自由栅格访问率: 100%; 路径长度: {stats['steps'] * args.resolution:.1f} m")
+    path_length = stats["steps"] * args.resolution
+    print(f"自由栅格访问率: 100%; 路径长度: {path_length:.1f} m")
     print("检查通过：四邻接连续、未进入障碍、无遗漏自由栅格。")
-    if args.no_show and not (args.gif or args.png):
+
+    if args.no_show and args.gif is None and args.png is None:
         return
 
     if args.no_show:
         import matplotlib
 
         matplotlib.use("Agg")
+
     import matplotlib.pyplot as plt
     from matplotlib.animation import FuncAnimation, PillowWriter
 
-    fig, update = make_figure(free, plan, args.resolution)
-    if args.png:
+    figure, update = make_figure(free, plan, args.resolution)
+    final_index = len(plan.path) - 1
+
+    if args.png is not None:
         args.png.parent.mkdir(parents=True, exist_ok=True)
-        update(len(plan.path) - 1)
-        fig.savefig(args.png, dpi=150, facecolor=fig.get_facecolor())
+        update(final_index)
+        figure.savefig(args.png, dpi=150, facecolor=figure.get_facecolor())
         update(0)
         print(f"PNG: {args.png}")
-    if args.gif or not args.no_show:
-        # 开头、末尾停留片刻。stride 仅影响动画速度，不影响规划或覆盖统计。
-        frames = (
-            [0] * max(1, args.fps // 2)
-            + list(range(0, len(plan.path), args.stride))
-            + [len(plan.path) - 1] * args.fps
-        )
+
+    if args.gif is not None or not args.no_show:
+        # 帧列表允许重复：在开头和末尾各停留一会儿。
+        frames: list[int] = []
+        opening_frames = max(1, args.fps // 2)
+        for _ in range(opening_frames):
+            frames.append(0)
+        for index in range(0, len(plan.path), args.stride):
+            frames.append(index)  # noqa: PERF402
+        for _ in range(args.fps):
+            frames.append(final_index)
+
+        def initialize_animation() -> tuple[Artist, ...]:
+            return update(0)
+
+        # 保留 animation 变量，直到 plt.show() 返回，避免动画提前被回收。
         animation = FuncAnimation(
-            fig,
+            figure,
             update,
             frames=frames,
-            init_func=lambda: update(0),
+            init_func=initialize_animation,
             interval=1000 / args.fps,
             repeat=True,
             blit=False,
             cache_frame_data=False,
         )
-        if args.gif:
+        if args.gif is not None:
             args.gif.parent.mkdir(parents=True, exist_ok=True)
             animation.save(args.gif, writer=PillowWriter(fps=args.fps), dpi=85)
             print(f"GIF: {args.gif}")
         if not args.no_show:
-            plt.show()  # 保留 animation 引用，避免动画对象提前被回收。
-    plt.close(fig)
+            plt.show()
+
+    plt.close(figure)
 
 
 if __name__ == "__main__":
