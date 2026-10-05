@@ -79,3 +79,26 @@
 1. reference_line 的长度和宽度限制
 2. 粗略平滑
 3. 每个点的宽度的计算，这个要平滑
+
+
+---
+
+问题：
+  if(s <= boundary_.front().s)
+  {
+    return boundary_.front();
+  }
+
+  if(s >= boundary_.back().s)
+  {
+    return boundary_.back();
+  }
+
+
+
+https://github.com/Hypha-ROS/hypharos_minicar
+https://github.com/Geonhee-LEE/mpc_ros?utm_source=chatgpt.com
+https://arxiv.org/pdf/2303.07751
+https://github.com/tud-amr/guidance_planner
+https://autonomousrobots.nl/
+https://github.com/orgs/tud-amr/repositories?page=2
