@@ -126,3 +126,17 @@ guard 对数。它们能帮你快速定位到是哪一段坏了。一个例子�
 下一阶段：segment ID / trajectory ID 的跨帧传播（论文 III-C，文档 4.4）。
 核心是 Algorithm 1 第 4-6 行的 `ReintroduceSample`：把上一帧的节点按
 `(x, y, t - h)` 重新放回图里，让引导轨迹在连续迭代间保持一致，机器人不再反复横跳。
+
+
+```md
+state_collision_free(x, world) -> bool                       # 一行，白送的
+edge_feasible(p, q, world) -> bool                           # ⚠️ 本阶段最大的坑
+sample_state(world, start, goal, rng) -> State | None        # P_PRM，透镜形拒绝采样
+visible_guards(x, graph, world) -> list[int]                 # Algorithm 1 第 9 行
+try_add_sample(x, graph, world) -> bool                      # 第 10–32 行，心脏
+build_prm(world, start, goal, num_samples, rng, sampler=None) -> Graph
+enumerate_paths(graph) -> list[list[int]]                    # 带访问列表的 DFS
+distinct_trajectories(paths, graph, world) -> list[Trajectory]
+```
+
+在连续的时空状态空间里反复采样。每个样本只和现有 guard 做可见性测试：看见 0 个说明它开辟了新区域，立为 guard；看见 2 个、且时间上夹在这两个 guard 中间，就是一座候选桥，跟这对 guard 之间已有的桥逐一做 UVD 判定，是新绕法就留下、是旧绕法就留短的那座；其余一律丢弃。采够预算后在这张 DAG 上 DFS 枚举候选路径，最后按整条轨迹两两做 UVD 判定贪心去重，剩下的就是通道集合 \(T^*\)。

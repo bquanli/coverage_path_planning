@@ -42,9 +42,8 @@ rng，不要用 np.random.* 的全局状态。否则你会遇到「跑三次过�
 
 from __future__ import annotations
 
-import numpy as np
-
 import exercise
+import numpy as np
 from graph import Graph, NodeKind
 from world import State, Trajectory, World
 
@@ -59,7 +58,7 @@ def state_collision_free(x: State, world: World) -> bool:
     Returns:
         True 表示该点不在任何障碍里。
     """
-    raise NotImplementedError("请实现 state_collision_free")
+    return exercise.segment_collision_free(x, x, world)
 
 
 def edge_feasible(p: State, q: State, world: World) -> bool:
@@ -83,11 +82,27 @@ def edge_feasible(p: State, q: State, world: World) -> bool:
     Returns:
         True 表示这条边可以存在。
     """
-    raise NotImplementedError("请实现 edge_feasible")
+    # 这里的运动学就是时间约束+速度约束
+    # 注意，这里不能时间相同
+    dt = p.t - q.t
+    ds = np.sqrt((p.xy - q.xy) @ (p.xy - q.xy))
+    v = ds
+    if abs(dt) < 1e-9:
+        return False
+
+    v = ds / abs(dt)
+    if v > world.max_velocity:
+        return False
+    if p.t > q.t:
+        temp = p
+        p = q
+        q = temp
+    return exercise.segment_collision_free(p, q, world)
 
 
-def sample_state(world: World, start: State, goal: State,
-                 rng: np.random.Generator) -> State | None:
+def sample_state(
+    world: World, start: State, goal: State, rng: np.random.Generator
+) -> State | None:
     """从可行状态分布 P_PRM 采一个样本（论文 Algorithm 1 第 8 行）。
 
     论文的 P_PRM 是一个考虑速度与加速度上限的前向扇形弧区域。先别照抄，
@@ -133,8 +148,7 @@ def visible_guards(x: State, graph: Graph, world: World) -> list[int]:
     raise NotImplementedError("请实现 visible_guards")
 
 
-def try_add_sample(x: State, graph: Graph, world: World,
-                   num_samples: int = 20) -> bool:
+def try_add_sample(x: State, graph: Graph, world: World, num_samples: int = 20) -> bool:
     """Algorithm 1 第 10-32 行：尝试把一个样本加进图里。**本阶段的心脏。**
 
     按 |L| = len(visible_guards(x)) 分三条路：
@@ -176,8 +190,14 @@ def try_add_sample(x: State, graph: Graph, world: World,
     raise NotImplementedError("请实现 try_add_sample")
 
 
-def build_prm(world: World, start: State, goal: State, num_samples: int,
-               rng: np.random.Generator, sampler=None) -> Graph:
+def build_prm(
+    world: World,
+    start: State,
+    goal: State,
+    num_samples: int,
+    rng: np.random.Generator,
+    sampler=None,
+) -> Graph:
     """Algorithm 1 的主循环（第 1-3 行 + 第 8 行）。十来行的胶水。
 
     1. 建一个空 Graph，把 start 和 goal 都加为 guard。
@@ -194,8 +214,9 @@ def build_prm(world: World, start: State, goal: State, num_samples: int,
     raise NotImplementedError("请实现 build_prm")
 
 
-def enumerate_paths(graph: Graph, start_id: int = 0, goal_id: int = 1,
-                    max_paths: int = 2000) -> list[list[int]]:
+def enumerate_paths(
+    graph: Graph, start_id: int = 0, goal_id: int = 1, max_paths: int = 2000
+) -> list[list[int]]:
     """带访问列表的 DFS，枚举从 start 到 goal 的所有路径（Algorithm 1 最后一步）。
 
     这张图是个 **DAG**：每条边在时间上严格向前，所以不可能成环，
@@ -214,8 +235,9 @@ def enumerate_paths(graph: Graph, start_id: int = 0, goal_id: int = 1,
     raise NotImplementedError("请实现 enumerate_paths")
 
 
-def distinct_trajectories(paths: list[list[int]], graph: Graph, world: World,
-                          num_samples: int = 20) -> list[Trajectory]:
+def distinct_trajectories(
+    paths: list[list[int]], graph: Graph, world: World, num_samples: int = 20
+) -> list[Trajectory]:
     """把 DFS 枚举出的路径去重，得到论文的几何轨迹集合 T*。
 
     为什么 DFS 之后还要再过一遍 UVD：try_add_sample 的构造只保证「段」
