@@ -232,7 +232,36 @@ def try_add_sample(x: State, graph: Graph, world: World, num_samples: int = 20) 
     Returns:
         True 表示图被改动了（新增或替换）。判卷不看返回值，只看最终的图。
     """
-    raise NotImplementedError("请实现 try_add_sample")
+    L = visible_guards(x, graph, world)
+    if len(L) == 0:
+        graph.add_guard(x)
+        return True
+
+    if len(L) != 2:
+        return False
+
+    guard_first = graph.nodes[L[0]]
+    guard_end = graph.nodes[L[1]]
+    if guard_first.state.t > guard_end.state.t:
+        guard_first, guard_end = guard_end, guard_first
+
+    if x.t not in (guard_start.state.t, guard_end.state.t):
+        return False
+
+    tau = Trajectory([guard_first.state, x, guard_end.state])
+
+    for connector in graph.connectors_between(guard_first.id, guard_end.id):
+        tau_grpah = Trajectory(
+            [guard_first.state, graph.nodes[connector].state, guard_end.state]
+        )
+        if exercise.uvd_equivalent(tau, tau_grpah, world):
+            if tau.length < tau_grpah.length:
+                graph.remove_connector(graph.nodes[connector].id)
+                graph.add_connector(x, guard_first.id, guard_end.id)
+            else:
+                return False
+    graph.add_connector(x, guard_first.id, guard_end.id)
+    return True
 
 
 def build_prm(
