@@ -13,10 +13,30 @@
 
 from __future__ import annotations
 
+import numpy as np
 from world import State, Trajectory, World
 
 
+# 无碰撞线段, a 是初始 state, b 是结束 state
 def segment_collision_free(a: State, b: State, world: World) -> bool:
+
+    for obs in world.obstacles:
+        obs_start = obs.at(a.t)
+        c0 = np.array([a.x - obs_start[0], a.y - obs_start[1]])
+        robot_vec = np.array([a.x - b.x, a.y - b.y])
+        c1 = robot_vec - obs.velocity * (b.t - a.t)
+        A = c1 * c1
+        B = c0 * c1
+        u = -B / A
+        if abs(A) < 1e-5:
+            return c0 * c0 < world.robot_radius * world.robot_radius # pyright: ignore[reportReturnType]
+        u = np.clip(u, 0, 10)
+        dis_sqr = c0 + u * c1
+        if dis_sqr * dis_sqr < world.robot_radius * world.robot_radius:
+            return False
+
+    return True
+
     """时空线段 a -> b 是否与所有障碍物都不碰撞。
 
     线段用 u in [0, 1] 参数化：
@@ -60,8 +80,9 @@ def connection_valid(a: State, b: State, world: World) -> bool:
     raise NotImplementedError("请实现 connection_valid")
 
 
-def uvd_equivalent(tau_1: Trajectory, tau_2: Trajectory, world: World,
-                   num_samples: int = 20) -> bool:
+def uvd_equivalent(
+    tau_1: Trajectory, tau_2: Trajectory, world: World, num_samples: int = 20
+) -> bool:
     """UVD 判据 H(tau_1, tau_2, O)，论文 Definition 1。
 
     在 s = 0, 1/n, ..., 1 上取两条轨迹的对应点，若**所有**连线
