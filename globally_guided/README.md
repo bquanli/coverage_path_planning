@@ -115,3 +115,7 @@ Zhou 等人的原实现（文献 19）是把每条路径均分成 N 段。
 
 下一阶段：Visibility-PRM 建图 + DFS 枚举拓扑类（论文 Algorithm 1）。
 guard / connector 的划分、「恰好看见 2 个 guard」的规则、以及用本阶段的 UVD 做去重。
+
+---
+
+阶段 2 的说明在 [README2.md](README2.md)。
