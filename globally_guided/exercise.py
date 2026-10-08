@@ -19,24 +19,6 @@ from world import State, Trajectory, World
 
 # 无碰撞线段, a 是初始 state, b 是结束 state
 def segment_collision_free(a: State, b: State, world: World) -> bool:
-
-    for obs in world.obstacles:
-        obs_start = obs.at(a.t)
-        c0 = np.array([a.x - obs_start[0], a.y - obs_start[1]])
-        robot_vec = np.array([a.x - b.x, a.y - b.y])
-        c1 = robot_vec - obs.velocity * (b.t - a.t)
-        A = c1 * c1
-        B = c0 * c1
-        u = -B / A
-        if abs(A) < 1e-5:
-            return c0 * c0 < world.robot_radius * world.robot_radius # pyright: ignore[reportReturnType]
-        u = np.clip(u, 0, 10)
-        dis_sqr = c0 + u * c1
-        if dis_sqr * dis_sqr < world.robot_radius * world.robot_radius:
-            return False
-
-    return True
-
     """时空线段 a -> b 是否与所有障碍物都不碰撞。
 
     线段用 u in [0, 1] 参数化：
@@ -59,7 +41,25 @@ def segment_collision_free(a: State, b: State, world: World) -> bool:
     Returns:
         True 表示无碰撞。
     """
-    raise NotImplementedError("请实现 segment_collision_free")
+    for obs in world.obstacles:
+        obs_start = obs.at(a.t)
+        c0 = np.array([a.x - obs_start[0], a.y - obs_start[1]])
+        robot_vec = b.xy - a.xy
+        c1 = robot_vec - obs.velocity * (b.t - a.t)
+        A = c1 @ c1
+        B = c0 @ c1
+        if A < 1e-18:
+            if c0 @ c0 < world.inflated_radius(obs) * world.inflated_radius(obs):
+                return False
+            u = 0
+        else:
+            u = -B / A
+            u = np.clip(u, 0, 1)
+        d = c0 + u * c1
+        if d @ d < world.inflated_radius(obs) * world.inflated_radius(obs):
+            return False
+
+    return True
 
 
 def connection_valid(a: State, b: State, world: World) -> bool:
@@ -77,9 +77,16 @@ def connection_valid(a: State, b: State, world: World) -> bool:
     Returns:
         True 表示可行。
     """
-    raise NotImplementedError("请实现 connection_valid")
+    delta_t = b.t - a.t
+    if delta_t <= 0:
+        return False
+    vec = b.xy - a.xy
+    d = vec @ vec
+    valid = bool(np.sqrt(d) / delta_t <= world.max_velocity)
+    return valid
 
 
+# UVD 等价判断
 def uvd_equivalent(
     tau_1: Trajectory, tau_2: Trajectory, world: World, num_samples: int = 20
 ) -> bool:
@@ -100,4 +107,11 @@ def uvd_equivalent(
     Returns:
         True 表示两条轨迹拓扑等价（即 H = 1）。
     """
-    raise NotImplementedError("请实现 uvd_equivalent")
+    s = 1 / num_samples
+    for i in range(num_samples + 1):
+        delta_s = s * i
+        state_a = tau_1.at(delta_s)
+        state_b = tau_2.at(delta_s)
+        if not segment_collision_free(state_a, state_b, world):
+            return False
+    return True

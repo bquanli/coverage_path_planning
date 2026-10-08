@@ -214,6 +214,7 @@ class World:
 
 
 # 这个是属于机器人的轨迹，并不是障碍物的轨迹！
+# 这样想，好像也是错误的，障碍物也是这个轨迹
 @dataclass
 class Trajectory:
     """时空折线，按（带 time_scale 的）累积弧长用 s in [0, 1] 参数化。
