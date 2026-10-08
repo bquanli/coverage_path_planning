@@ -64,6 +64,7 @@ class Node:
     guard 节点这一项是 None。"""
 
 
+# 用节点 ID 标识节点，再用几个字典分别保存节点信息、连接关系，以及方便查询的索引。
 class Graph:
     """Visibility-PRM 的图。
 
@@ -74,7 +75,10 @@ class Graph:
     def __init__(self, world: World) -> None:
         self.world = world
         self._nodes: dict[int, Node] = {}
+        # 保存每个节点与谁相连
+        # adj 通常是 adjacency 的缩写，意思是“邻接关系”。它表示邻接表（adjacency list），记录每个节点直接连接的其他节点。
         self._adj: dict[int, set[int]] = {}
+        # 这两个 guard 之间有哪些 connector？
         self._by_guard_pair: dict[tuple[int, int], list[int]] = {}
         self._next_id = 0
 
@@ -85,6 +89,7 @@ class Graph:
         node_id = self._next_id
         self._next_id += 1
         self._nodes[node_id] = Node(id=node_id, state=state, kind=NodeKind.GUARD)
+
         self._adj[node_id] = set()
         return node_id
 
@@ -106,8 +111,9 @@ class Graph:
 
         node_id = self._next_id
         self._next_id += 1
-        self._nodes[node_id] = Node(id=node_id, state=state,
-                                    kind=NodeKind.CONNECTOR, guards=(early, late))
+        self._nodes[node_id] = Node(
+            id=node_id, state=state, kind=NodeKind.CONNECTOR, guards=(early, late)
+        )
         self._adj[node_id] = {early, late}
         self._adj[early].add(node_id)
         self._adj[late].add(node_id)
@@ -176,8 +182,11 @@ class Graph:
 
     def path_trajectory(self, node_ids: list[int], name: str = "") -> Trajectory:
         """把一串节点 id 变成 Trajectory（按 world.time_scale 参数化）。"""
-        return Trajectory(states=[self.state(i) for i in node_ids],
-                          time_scale=self.world.time_scale, name=name)
+        return Trajectory(
+            states=[self.state(i) for i in node_ids],
+            time_scale=self.world.time_scale,
+            name=name,
+        )
 
     def stats(self) -> dict[str, int]:
         """统计量。阶段 2 的 bug 大多不报错，先看这几个数再看图。"""
@@ -195,8 +204,10 @@ class Graph:
 
     def __repr__(self) -> str:
         s = self.stats()
-        return (f"Graph(guards={s['guards']}, connectors={s['connectors']}, "
-                f"edges={s['edges']})")
+        return (
+            f"Graph(guards={s['guards']}, connectors={s['connectors']}, "
+            f"edges={s['edges']})"
+        )
 
 
 @dataclass

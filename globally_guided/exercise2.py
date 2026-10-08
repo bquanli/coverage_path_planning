@@ -183,7 +183,14 @@ def visible_guards(x: State, graph: Graph, world: World) -> list[int]:
     Returns:
         guard 的 **id** 列表。顺序不重要，判卷会排序后比对。
     """
-    raise NotImplementedError("请实现 visible_guards")
+    L: list[int] = []
+    for node in graph.nodes.values():
+        if node.kind is not NodeKind.GUARD:
+            continue
+        if edge_feasible(x, node.state, world):
+            L.append(node.id)
+
+    return L
 
 
 def try_add_sample(x: State, graph: Graph, world: World, num_samples: int = 20) -> bool:
