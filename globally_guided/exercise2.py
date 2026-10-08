@@ -83,23 +83,18 @@ def edge_feasible(p: State, q: State, world: World) -> bool:
         True 表示这条边可以存在。
     """
     # 这里的运动学就是时间约束+速度约束
-    # 注意，这里不能时间相同
-    dt = p.t - q.t
-    ds = np.sqrt((p.xy - q.xy) @ (p.xy - q.xy))
-    v = ds
-    if abs(dt) < 1e-9:
+    # 注意，这里不能时间相同(在 valid 中进行检测，这里不用再次检测)
+    # 排序 → 运动学 → 碰撞
+    if p.t > q.t:
+        p, q = q, p
+
+    if not exercise.connection_valid(p, q, world):
         return False
 
-    v = ds / abs(dt)
-    if v > world.max_velocity:
-        return False
-    if p.t > q.t:
-        temp = p
-        p = q
-        q = temp
     return exercise.segment_collision_free(p, q, world)
 
 
+# 这个函数的职责只有一个：定义"往哪撒点"，然后撒一个出来。
 def sample_state(
     world: World, start: State, goal: State, rng: np.random.Generator
 ) -> State | None:
@@ -118,6 +113,9 @@ def sample_state(
     条件 2 和 3 是两个圆盘的交集，是一个**透镜形**。最简单的做法是拒绝采样：
     先抽 t，再算出这个透镜形的包围盒，在盒子里均匀抽点，不合格就重抽。
 
+    其实自己没有理解到，为什么两个圆盘，就会构成一个透镜形。。。
+          透镜形就是两个圆盘重叠的部分，外观像一枚凸透镜，两侧边界各是一段圆弧。
+
     为什么要把条件 3 加上：不加的话，大量样本会落在「能走到但回不来」的
     地方，它们永远只能看见 1 个 guard，注定被丢弃。这是「定义域选错了」的
     另一个版本，和上次把 u 的上界 clamp 成 10 是同一类毛病。
@@ -126,14 +124,29 @@ def sample_state(
     - 所有随机数都用传进来的 rng，不要用 np.random.uniform 等全局接口。
     - 拒绝采样要有**次数上限**，否则透镜形为空或者几乎全被障碍盖住时会死循环。
     - 包围盒可能是空的（lo >= hi），要先挡掉再抽。
-
+                     low, high
     Returns:
         一个合法的 State；实在采不到就返回 None（调用方负责跳过）。
     """
-    for i in range(2000):
-        x = rng.uniform(start.x, goal.x)
-        y = rng.uniform(start.y, goal.y)
+    for _ in range(1000):
+        # 对于这个采样，自己想错了，自己以为 start\goal 框定的区域就是整个区域。。。
+        # 实际上并不是，start和goal的xy虽然也可以框出一个矩形，但特殊的是，当  start.y/x == goal.y/x 时，就会退化为一条直线。
         t = rng.uniform(start.t, goal.t)
+        xys = world.max_velocity * (t - start.t)
+        xye = world.max_velocity * (goal.t - t)
+        # x = rng.uniform(goal.x - xye, start.x + xys)
+        # y = rng.uniform(goal.y - xye, start.y + xys)
+        xmin = max(start.x - xys, goal.x - xye)
+        xmax = min(start.x + xys, goal.x + xye)
+
+        ymin = max(start.y - xys, goal.y - xye)
+        ymax = min(start.y + xys, goal.y + xye)
+
+        if xmin > xmax or ymin > ymax:
+            continue
+
+        x = rng.uniform(xmin, xmax)
+        y = rng.uniform(ymin, ymax)
         new_state = State(x, y, t)
 
         dts = new_state.t - start.t
@@ -141,15 +154,15 @@ def sample_state(
         if dts <= 0 or dte <= 0:
             continue
 
-        dss = np.sqrt((new_state.xy - start.xy) @ (new_state.xy - start.xy))
-        if dss / dts > world.max_velocity:
+        delta_start = new_state.xy - start.xy
+        d2_start = delta_start @ delta_start
+        if d2_start > xys**2:
             continue
-        dse = np.sqrt((goal.xy - new_state.xy) @ (goal.xy - new_state.xy))
-        if dse / dte > world.max_velocity:
+        delta_end = goal.xy - new_state.xy
+        d2_end = delta_end @ delta_end
+        if d2_end > xye**2:
             continue
-        if not exercise.segment_collision_free(
-            start, new_state, world
-        ) or not exercise.segment_collision_free(new_state, goal, world):
+        if not state_collision_free(new_state, world):
             continue
 
         return new_state
@@ -157,6 +170,7 @@ def sample_state(
     return None
 
 
+# 必须扫完全部 guard，因为返回列表的长度（0 / 2 / 其他）决定 try_add_sample 走哪条分支，提前 break 会让长度偏小且不报任何错。
 def visible_guards(x: State, graph: Graph, world: World) -> list[int]:
     """找出新样本 x 能无碰撞连到的所有 guard，论文里记作 L（Algorithm 1 第 9 行）。
 
