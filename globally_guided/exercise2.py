@@ -130,7 +130,31 @@ def sample_state(
     Returns:
         一个合法的 State；实在采不到就返回 None（调用方负责跳过）。
     """
-    raise NotImplementedError("请实现 sample_state")
+    for i in range(2000):
+        x = rng.uniform(start.x, goal.x)
+        y = rng.uniform(start.y, goal.y)
+        t = rng.uniform(start.t, goal.t)
+        new_state = State(x, y, t)
+
+        dts = new_state.t - start.t
+        dte = goal.t - new_state.t
+        if dts <= 0 or dte <= 0:
+            continue
+
+        dss = np.sqrt((new_state.xy - start.xy) @ (new_state.xy - start.xy))
+        if dss / dts > world.max_velocity:
+            continue
+        dse = np.sqrt((goal.xy - new_state.xy) @ (goal.xy - new_state.xy))
+        if dse / dte > world.max_velocity:
+            continue
+        if not exercise.segment_collision_free(
+            start, new_state, world
+        ) or not exercise.segment_collision_free(new_state, goal, world):
+            continue
+
+        return new_state
+
+    return None
 
 
 def visible_guards(x: State, graph: Graph, world: World) -> list[int]:
