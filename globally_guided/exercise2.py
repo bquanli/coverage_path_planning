@@ -45,7 +45,7 @@ from __future__ import annotations
 import exercise
 import numpy as np
 from graph import Graph, NodeKind
-from world import State, Trajectory, World
+from world import State, Trajectory, World, trajectory
 
 
 def state_collision_free(x: State, world: World) -> bool:
@@ -245,21 +245,29 @@ def try_add_sample(x: State, graph: Graph, world: World, num_samples: int = 20) 
     if guard_first.state.t > guard_end.state.t:
         guard_first, guard_end = guard_end, guard_first
 
-    if x.t not in (guard_start.state.t, guard_end.state.t):
+    if not guard_first.state.t < x.t < guard_end.state.t:
         return False
 
-    tau = Trajectory([guard_first.state, x, guard_end.state])
+    tau = trajectory(
+        [
+            (guard_first.state.x, guard_first.state.y, guard_first.state.t),
+            (x.x, x.y, x.t),
+            (guard_end.state.x, guard_end.state.y, guard_end.state.t),
+        ],
+        world.time_scale,
+        "",
+    )
 
     for connector in graph.connectors_between(guard_first.id, guard_end.id):
-        tau_grpah = Trajectory(
-            [guard_first.state, graph.nodes[connector].state, guard_end.state]
-        )
-        if exercise.uvd_equivalent(tau, tau_grpah, world):
-            if tau.length < tau_grpah.length:
+        tau_j = graph.path_trajectory([guard_first.id, connector, guard_end.id])
+        if exercise.uvd_equivalent(tau, tau_j, world, num_samples):
+            if tau.length < tau_j.length:
                 graph.remove_connector(graph.nodes[connector].id)
                 graph.add_connector(x, guard_first.id, guard_end.id)
-            else:
-                return False
+                return True
+
+            return False
+
     graph.add_connector(x, guard_first.id, guard_end.id)
     return True
 
@@ -285,6 +293,9 @@ def build_prm(
 
     论文第 4-6 行的 ReintroduceSample（跨帧传播）属于阶段 3，这里每次从零重建就行。
     """
+    graph = Graph(world)
+    graph.add_guard(start)
+    graph.add_guard(goal)
     raise NotImplementedError("请实现 build_prm")
 
 
