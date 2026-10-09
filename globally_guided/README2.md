@@ -23,6 +23,7 @@
 | `cases2.py` | 验收用例，脚手架 |
 | `check2.py` | 判卷 |
 | `viz2.py` | rerun 三维可视化 |
+| `viz_cases.py` | matplotlib 版用例可视化，直接出 PNG |
 
 阶段 1 的 `world.py` / `exercise.py` 继续用，不用改。
 
@@ -42,6 +43,10 @@
 .venv/bin/python globally_guided/viz2.py --list
 .venv/bin/python globally_guided/viz2.py --scenario single_static
 .venv/bin/python globally_guided/viz2.py --scenario big_blocker --seed 2 --save /tmp/prm.rrd
+
+.venv/bin/python globally_guided/viz_cases.py               # 六张图全出，写到 globally_guided/figures/
+.venv/bin/python globally_guided/viz_cases.py --stage add   # 只重画 try_add_sample 那一张
+.venv/bin/python globally_guided/viz_cases.py --out /tmp/fig --seed 7
 ```
 
 总共 43 个计分用例，另有 1 个只打印不判对错的观察场景。建议先 `edge` -> `sample` -> `visible` -> `add` -> `dfs`，
@@ -103,6 +108,9 @@ guard 对数。它们能帮你快速定位到是哪一段坏了。一个例子�
 用不同颜色画进 rerun。拓扑 bug 的典型症状是「一个静态障碍的场景只找到 1 类
 而不是 2 类」，这种事只能看出来，推不出来。配上 `--num-samples 10` 调小样本数，
 能看清楚图是怎么一步步长起来的。
+
+如果只是想看「某个用例到底长什么样」，用 `viz_cases.py` 更直接：它不开窗口，把 `cases2.py` 里每一组用例连同期望值、实际值、PASS/FAIL 一起
+画成 PNG。某个用例挂了但看不出所以然时，先看它对应的那张图。
 
 ## 关于 `crossing_pedestrian` 那个场景
 

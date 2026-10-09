@@ -23,26 +23,37 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import numpy as np
-
 import cases2 as case_data
 import exercise2
-from graph import NodeKind
-from world import State, Trajectory, World
+import numpy as np
+from world import State, World
 
 ORANGE = [255, 140, 0]
 BLACK = [20, 20, 20]
 GREY = [160, 160, 160]
 RED = [220, 50, 50]
 BLUE = [60, 110, 230]
-PALETTE = [[0, 160, 90], [230, 80, 180], [250, 190, 0], [0, 180, 200],
-           [150, 90, 220], [200, 60, 60], [90, 140, 40], [240, 130, 60]]
+PALETTE = [
+    [0, 160, 90],
+    [230, 80, 180],
+    [250, 190, 0],
+    [0, 180, 200],
+    [150, 90, 220],
+    [200, 60, 60],
+    [90, 140, 40],
+    [240, 130, 60],
+]
 
 
 def _circle(centre, radius: float, z: float, segments: int = 36):
-    return [[float(centre[0] + radius * math.cos(2 * math.pi * i / segments)),
-             float(centre[1] + radius * math.sin(2 * math.pi * i / segments)),
-             float(z)] for i in range(segments + 1)]
+    return [
+        [
+            float(centre[0] + radius * math.cos(2 * math.pi * i / segments)),
+            float(centre[1] + radius * math.sin(2 * math.pi * i / segments)),
+            float(z),
+        ]
+        for i in range(segments + 1)
+    ]
 
 
 def _log_obstacles(rr, world: World, horizon: float, layers: int = 25) -> None:
@@ -55,10 +66,14 @@ def _log_obstacles(rr, world: World, horizon: float, layers: int = 25) -> None:
             z = t * world.time_scale
             rings.append(_circle(centre, radius, z))
             centres.append([float(centre[0]), float(centre[1]), float(z)])
-        rr.log(f"world/obstacle_{index}/inflated",
-               rr.LineStrips3D(rings, colors=[ORANGE] * len(rings), radii=0.012))
-        rr.log(f"world/obstacle_{index}/centre",
-               rr.LineStrips3D([centres], colors=[BLACK], radii=0.02))
+        rr.log(
+            f"world/obstacle_{index}/inflated",
+            rr.LineStrips3D(rings, colors=[ORANGE] * len(rings), radii=0.012),
+        )
+        rr.log(
+            f"world/obstacle_{index}/centre",
+            rr.LineStrips3D([centres], colors=[BLACK], radii=0.02),
+        )
 
 
 def _xyz(state: State, world: World):
@@ -69,17 +84,28 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Visibility-PRM 的三维可视化")
     parser.add_argument("--scenario", default="single_static")
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--num-samples", type=int, default=None,
-                        help="覆盖场景自带的采样数。调小一点能看清楚图是怎么长起来的。")
-    parser.add_argument("--save", type=Path, default=None,
-                        help="写到 .rrd 文件而不开窗口（无头环境用这个）")
+    parser.add_argument(
+        "--num-samples",
+        type=int,
+        default=None,
+        help="覆盖场景自带的采样数。调小一点能看清楚图是怎么长起来的。",
+    )
+    parser.add_argument(
+        "--save",
+        type=Path,
+        default=None,
+        help="写到 .rrd 文件而不开窗口（无头环境用这个）",
+    )
     parser.add_argument("--list", action="store_true")
     args = parser.parse_args()
 
     if args.list:
         for scenario in case_data.TOPOLOGY_SCENARIOS:
-            expected = ("观察用" if scenario.expected_classes is None
-                        else f"{scenario.expected_classes} 类")
+            expected = (
+                "观察用"
+                if scenario.expected_classes is None
+                else f"{scenario.expected_classes} 类"
+            )
             print(f"  {scenario.name:<22} expected={expected}")
         return 0
 
@@ -89,16 +115,21 @@ def main() -> int:
 
     rng = np.random.default_rng(args.seed)
     try:
-        graph = exercise2.build_prm(world, scenario.start, scenario.goal,
-                                    num_samples, rng)
+        graph = exercise2.build_prm(
+            world, scenario.start, scenario.goal, num_samples, rng
+        )
     except NotImplementedError as exc:
         print(f"还没实现：{exc}", file=sys.stderr)
         return 1
 
     paths, taus = [], []
-    for step, fn in (("enumerate_paths", lambda: exercise2.enumerate_paths(graph)),
-                     ("distinct_trajectories",
-                      lambda: exercise2.distinct_trajectories(paths, graph, world))):
+    for step, fn in (
+        ("enumerate_paths", lambda: exercise2.enumerate_paths(graph)),
+        (
+            "distinct_trajectories",
+            lambda: exercise2.distinct_trajectories(paths, graph, world),  # pyright: ignore[reportArgumentType]  # noqa: B023
+        ),
+    ):
         try:
             result = fn()
         except NotImplementedError:
@@ -125,33 +156,60 @@ def main() -> int:
     guard_ids = graph.guard_ids()
     connector_ids = graph.connector_ids()
     if guard_ids:
-        rr.log("prm/guards", rr.Points3D(
-            [_xyz(graph.state(i), world) for i in guard_ids],
-            colors=[RED] * len(guard_ids), radii=0.09,
-            labels=[f"g{i}" for i in guard_ids]))
+        rr.log(
+            "prm/guards",
+            rr.Points3D(
+                [_xyz(graph.state(i), world) for i in guard_ids],
+                colors=[RED] * len(guard_ids),
+                radii=0.09,
+                labels=[f"g{i}" for i in guard_ids],
+            ),
+        )
     if connector_ids:
-        rr.log("prm/connectors", rr.Points3D(
-            [_xyz(graph.state(i), world) for i in connector_ids],
-            colors=[BLUE] * len(connector_ids), radii=0.06))
+        rr.log(
+            "prm/connectors",
+            rr.Points3D(
+                [_xyz(graph.state(i), world) for i in connector_ids],
+                colors=[BLUE] * len(connector_ids),
+                radii=0.06,
+            ),
+        )
     edges = graph.edges()
     if edges:
-        rr.log("prm/edges", rr.LineStrips3D(
-            [[_xyz(graph.state(a), world), _xyz(graph.state(b), world)]
-             for a, b in edges], colors=[GREY] * len(edges), radii=0.008))
+        rr.log(
+            "prm/edges",
+            rr.LineStrips3D(
+                [
+                    [_xyz(graph.state(a), world), _xyz(graph.state(b), world)]
+                    for a, b in edges
+                ],
+                colors=[GREY] * len(edges),
+                radii=0.008,
+            ),
+        )
 
     for index, tau in enumerate(taus):
-        points = [_xyz(tau.at(k / 120), world) for k in range(121)]
-        rr.log(f"guidance/class_{index}", rr.LineStrips3D(
-            [points], colors=[PALETTE[index % len(PALETTE)]], radii=0.04))
+        points = [_xyz(tau.at(k / 120), world) for k in range(121)]  # pyright: ignore[reportAttributeAccessIssue]
+        rr.log(
+            f"guidance/class_{index}",
+            rr.LineStrips3D(
+                [points], colors=[PALETTE[index % len(PALETTE)]], radii=0.04
+            ),
+        )
 
     stats = graph.stats()
-    rr.log("notes", rr.TextDocument(
-        f"# {scenario.name}  (seed={args.seed}, samples={num_samples})\n\n"
-        f"{scenario.description}\n\n"
-        f"- guards: {stats['guards']}\n- connectors: {stats['connectors']}\n"
-        f"- 路径: {len(paths)}\n- 拓扑类: {len(taus)}\n\n"
-        "z 轴是时间。红点 guard，蓝点 connector，灰线 边，彩线 拓扑类。",
-        media_type="text/markdown"), static=True)
+    rr.log(
+        "notes",
+        rr.TextDocument(
+            f"# {scenario.name}  (seed={args.seed}, samples={num_samples})\n\n"
+            f"{scenario.description}\n\n"
+            f"- guards: {stats['guards']}\n- connectors: {stats['connectors']}\n"
+            f"- 路径: {len(paths)}\n- 拓扑类: {len(taus)}\n\n"
+            "z 轴是时间。红点 guard，蓝点 connector，灰线 边，彩线 拓扑类。",
+            media_type="text/markdown",
+        ),
+        static=True,
+    )
 
     print(f"场景 {scenario.name}（seed={args.seed}, samples={num_samples}）")
     print(f"  {stats}")
