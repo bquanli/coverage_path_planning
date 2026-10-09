@@ -272,6 +272,7 @@ def try_add_sample(x: State, graph: Graph, world: World, num_samples: int = 20) 
     return True
 
 
+# 构建一个粗略的图
 def build_prm(
     world: World,
     start: State,
@@ -296,7 +297,16 @@ def build_prm(
     graph = Graph(world)
     graph.add_guard(start)
     graph.add_guard(goal)
-    raise NotImplementedError("请实现 build_prm")
+    if sampler is None:
+        sampler = sample_state
+
+    for i in range(num_samples):
+        new_sample = sampler(world, start, goal, rng)
+        if new_sample is None:
+            continue
+        try_add_sample(new_sample, graph, world)
+
+    return graph
 
 
 def enumerate_paths(
@@ -317,7 +327,10 @@ def enumerate_paths(
     - 路径数会组合爆炸，用 max_paths 封顶。
     - 空分支要先挡：一条路径都找不到时返回空列表，不要报错。
     """
-    raise NotImplementedError("请实现 enumerate_paths")
+    path: list[list[int]] = []
+    
+
+    return path
 
 
 def distinct_trajectories(
