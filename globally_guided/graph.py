@@ -183,7 +183,7 @@ class Graph:
     def path_trajectory(self, node_ids: list[int], name: str = "") -> Trajectory:
         """把一串节点 id 变成 Trajectory（按 world.time_scale 参数化）。"""
         return Trajectory(
-            states=[self.state(i) for i in node_ids],
+            states=[self.state(i) for i in node_ids],  # type: ignore
             time_scale=self.world.time_scale,
             name=name,
         )

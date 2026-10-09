@@ -379,16 +379,18 @@ def distinct_trajectories(
     Returns:
         两两 UVD 不等价的 Trajectory 列表。
     """
-    keps: list[Trajectory] = []
+    kepts: list[Trajectory] = []
     trajs: list[Trajectory] = []
     for path in paths:
         trajs.append(graph.path_trajectory(path))
     trajs.sort(key=lambda traj: traj.length)
     for traj in trajs:
-        for kep in keps:
-            if not exercise.uvd_equivalent(kep, traj, world, num_samples):
-                continue
-            keps.append(traj)
-            break
-
-    return keps
+        is_new = True
+        for kep in kepts:
+            if exercise.uvd_equivalent(kep, traj, world, num_samples):
+                is_new = False
+                break
+        if is_new:
+            kepts.append(traj)
+  
+    return kepts

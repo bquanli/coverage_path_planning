@@ -82,7 +82,7 @@ def connection_valid(a: State, b: State, world: World) -> bool:
         return False
     vec = b.xy - a.xy
     d = vec @ vec
-    valid = bool(np.sqrt(d) / delta_t <= world.max_velocity)
+    valid = bool(np.sqrt(d) / delta_t <= world.max_velocity) # type: ignore
     return valid
 
 
