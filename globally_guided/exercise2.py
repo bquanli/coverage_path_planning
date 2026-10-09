@@ -309,6 +309,8 @@ def build_prm(
     return graph
 
 
+# 自己这里一开始觉得困难，是因为想到了要像astar那样，存放几个类型的数据
+# 但是这里，只需要使用递归就可以了
 def enumerate_paths(
     graph: Graph, start_id: int = 0, goal_id: int = 1, max_paths: int = 2000
 ) -> list[list[int]]:
@@ -327,10 +329,26 @@ def enumerate_paths(
     - 路径数会组合爆炸，用 max_paths 封顶。
     - 空分支要先挡：一条路径都找不到时返回空列表，不要报错。
     """
-    path: list[list[int]] = []
-    
+    paths: list[list[int]] = []
+    path: list[int] = []
 
-    return path
+    def walk(node_id: int) -> None:
+        if len(paths) >= max_paths:
+            return
+        if node_id == goal_id:
+            paths.append(list(path))
+            return
+        t_now = graph.state(node_id).t
+        for next_node in graph.neighbors(node_id):
+            if graph.state(next_node).t <= t_now:
+                continue
+            path.append(next_node)
+            walk(next_node)
+            path.pop()
+
+    path.append(start_id)
+    walk(start_id)
+    return paths
 
 
 def distinct_trajectories(
@@ -361,4 +379,16 @@ def distinct_trajectories(
     Returns:
         两两 UVD 不等价的 Trajectory 列表。
     """
-    raise NotImplementedError("请实现 distinct_trajectories")
+    keps: list[Trajectory] = []
+    trajs: list[Trajectory] = []
+    for path in paths:
+        trajs.append(graph.path_trajectory(path))
+    trajs.sort(key=lambda traj: traj.length)
+    for traj in trajs:
+        for kep in keps:
+            if not exercise.uvd_equivalent(kep, traj, world, num_samples):
+                continue
+            keps.append(traj)
+            break
+
+    return keps
