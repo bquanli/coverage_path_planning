@@ -198,19 +198,33 @@ def main() -> int:
         )
 
     stats = graph.stats()
+    # rr.log(
+    #     "notes",
+    #     rr.TextDocument(
+    #         f"# {scenario.name}  (seed={args.seed}, samples={num_samples})\n\n"
+    #         f"{scenario.description}\n\n"
+    #         f"- guards: {stats['guards']}\n- connectors: {stats['connectors']}\n"
+    #         f"- 路径: {len(paths)}\n- 拓扑类: {len(taus)}\n\n"
+    #         "z 轴是时间。红点 guard，蓝点 connector，灰线 边，彩线 拓扑类。",
+    #         media_type="text/markdown",
+    #     ),
+    #     static=True,
+    # )
     rr.log(
         "notes",
         rr.TextDocument(
             f"# {scenario.name}  (seed={args.seed}, samples={num_samples})\n\n"
-            f"{scenario.description}\n\n"
-            f"- guards: {stats['guards']}\n- connectors: {stats['connectors']}\n"
-            f"- 路径: {len(paths)}\n- 拓扑类: {len(taus)}\n\n"
-            "z 轴是时间。红点 guard，蓝点 connector，灰线 边，彩线 拓扑类。",
+            f"- Guards: {stats['guards']}\n"
+            f"- Connectors: {stats['connectors']}\n"
+            f"- Paths: {len(paths)}\n"
+            f"- Topological classes: {len(taus)}\n\n"
+            "Z axis: scaled time.\n\n"
+            "Red: guards; blue: connectors; grey: edges; "
+            "colored lines: topological classes.",
             media_type="text/markdown",
         ),
         static=True,
     )
-
     print(f"场景 {scenario.name}（seed={args.seed}, samples={num_samples}）")
     print(f"  {stats}")
     print(f"  DFS 找到 {len(paths)} 条路径 -> 去重后 {len(taus)} 个拓扑类", end="")

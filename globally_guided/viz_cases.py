@@ -29,7 +29,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 os.environ.setdefault("MPLCONFIGDIR", "/tmp/mplcfg")
 
 import matplotlib
-
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
@@ -77,17 +76,10 @@ def _draw_obstacles(ax, world: World, t_max: float, layers: int = 24) -> None:
         x = centres[:, 0][None, :] + radius * np.cos(th)[:, None]
         y = centres[:, 1][None, :] + radius * np.sin(th)[:, None]
         z = np.broadcast_to(ts * world.time_scale, x.shape)
-        ax.plot_surface(
-            x, y, z, color=OBS_C, alpha=0.18, linewidth=0, shade=False, zorder=0
-        )
-        ax.plot(
-            centres[:, 0],
-            centres[:, 1],
-            ts * world.time_scale,
-            color=OBS_C,
-            lw=0.8,
-            alpha=0.7,
-        )
+        ax.plot_surface(x, y, z, color=OBS_C, alpha=0.18, linewidth=0,
+                        shade=False, zorder=0)
+        ax.plot(centres[:, 0], centres[:, 1], ts * world.time_scale,
+                color=OBS_C, lw=0.8, alpha=0.7)
 
 
 def _xyz(state: State, world: World):
@@ -127,24 +119,16 @@ def _save(fig, out_dir: Path, name: str) -> Path:
 
 def _draw_graph(ax, graph: Graph, world: World, labels: bool = True) -> None:
     for a, b in graph.edges():
-        _seg(ax, graph.state(a), graph.state(b), world, color=EDGE_C, lw=1.0, zorder=2)
-    for kind, colour, size in (
-        (NodeKind.GUARD, GUARD_C, 42),
-        (NodeKind.CONNECTOR, CONN_C, 26),
-    ):
+        _seg(ax, graph.state(a), graph.state(b), world,
+             color=EDGE_C, lw=1.0, zorder=2)
+    for kind, colour, size in ((NodeKind.GUARD, GUARD_C, 42),
+                               (NodeKind.CONNECTOR, CONN_C, 26)):
         ids = [i for i in graph.nodes if graph.kind(i) is kind]
         if not ids:
             continue
         pts = np.array([_xyz(graph.state(i), world) for i in ids])
-        ax.scatter(
-            pts[:, 0],
-            pts[:, 1],
-            pts[:, 2],
-            c=colour,
-            s=size,
-            depthshade=False,
-            zorder=5,
-        )
+        ax.scatter(pts[:, 0], pts[:, 1], pts[:, 2], c=colour, s=size,
+                   depthshade=False, zorder=5)
         if labels:
             for i, p in zip(ids, pts):
                 ax.text(p[0], p[1], p[2], f" {i}", fontsize=6, color=colour)
@@ -163,27 +147,19 @@ def plot_edge(out_dir: Path) -> None:
             got = None
         ok = got == case.expected
         t_max = max(case.p.t, case.q.t, 0.5)
-        ax = _ax3d(
-            fig,
-            2,
-            4,
-            n,
-            f"{n}. {case.name}\nexpect={case.expected} got={got} [{_mark(ok)}]",
-        )
+        ax = _ax3d(fig, 2, 4, n,
+                   f"{n}. {case.name}\nexpect={case.expected} got={got} [{_mark(ok)}]")
         _draw_obstacles(ax, case.world, t_max)
         colour = OK_C if case.expected else BAD_C
         style = "-" if case.expected else "--"
         _seg(ax, case.p, case.q, case.world, color=colour, lw=2.2, ls=style, zorder=6)
         for s, lab in ((case.p, "p"), (case.q, "q")):
             x, y, z = _xyz(s, case.world)
-            ax.scatter([x], [y], [z], c="black", s=24, depthshade=False, zorder=7)  # type: ignore
+            ax.scatter([x], [y], [z], c="black", s=24, depthshade=False, zorder=7)
             ax.text(x, y, z, f" {lab}", fontsize=7)
         _autoscale(ax, case.world, [case.p, case.q], t_max)
-    fig.suptitle(
-        "stage edge - edge_feasible: green solid = should be feasible, "
-        "red dashed = should be rejected",
-        fontsize=11,
-    )
+    fig.suptitle("stage edge - edge_feasible: green solid = should be feasible, "
+                 "red dashed = should be rejected", fontsize=11)
     fig.tight_layout(rect=(0, 0, 1, 0.95))
     _save(fig, out_dir, "cases_edge.png")
 
@@ -206,37 +182,21 @@ def plot_sample(out_dir: Path, draws: int = 900, seed: int = 0) -> None:
                 misses += 1
             else:
                 pts.append(_xyz(s, sc.world))
-        ax = _ax3d(
-            fig,
-            1,
-            4,
-            n,
-            f"{n}. {sc.name}\n{len(pts)} samples, {misses} None "
-            f"(v_max={sc.world.max_velocity})",
-        )
+        ax = _ax3d(fig, 1, 4, n,
+                   f"{n}. {sc.name}\n{len(pts)} samples, {misses} None "
+                   f"(v_max={sc.world.max_velocity})")
         _draw_obstacles(ax, sc.world, sc.goal.t)
         if pts:
             arr = np.array(pts)
-            ax.scatter(
-                arr[:, 0],
-                arr[:, 1],
-                arr[:, 2],  # type: ignore
-                c=arr[:, 2],
-                cmap="viridis",
-                s=4,
-                alpha=0.55,
-                depthshade=False,
-            )
+            ax.scatter(arr[:, 0], arr[:, 1], arr[:, 2], c=arr[:, 2],
+                       cmap="viridis", s=4, alpha=0.55, depthshade=False)
         for s, lab in ((sc.start, "start"), (sc.goal, "goal")):
             x, y, z = _xyz(s, sc.world)
-            ax.scatter([x], [y], [z], c=GUARD_C, s=55, depthshade=False, zorder=7)  # type: ignore
+            ax.scatter([x], [y], [z], c=GUARD_C, s=55, depthshade=False, zorder=7)
             ax.text(x, y, z, f" {lab}", fontsize=7)
         _autoscale(ax, sc.world, [sc.start, sc.goal], sc.goal.t)
-    fig.suptitle(
-        "stage sample - sample_state: the cloud must form a LENS "
-        "(two cones meeting in the middle), not a box",
-        fontsize=11,
-    )
+    fig.suptitle("stage sample - sample_state: the cloud must form a LENS "
+                 "(two cones meeting in the middle), not a box", fontsize=11)
     fig.tight_layout(rect=(0, 0, 1, 0.88))
     _save(fig, out_dir, "cases_sample.png")
 
@@ -258,40 +218,25 @@ def plot_visible(out_dir: Path) -> None:
         ok = got == tuple(sorted(case.expected_indices))
         states = [*case.guards, case.x]
         t_max = max(s.t for s in states)
-        ax = _ax3d(
-            fig,
-            2,
-            4,
-            n,
-            f"{n}. {case.name}\nexpect={case.expected_indices} got={got} [{_mark(ok)}]",
-        )
+        ax = _ax3d(fig, 2, 4, n,
+                   f"{n}. {case.name}\nexpect={case.expected_indices} got={got} "
+                   f"[{_mark(ok)}]")
         _draw_obstacles(ax, case.world, t_max)
         for gid, g in enumerate(case.guards):
             visible = gid in case.expected_indices
-            _seg(
-                ax,
-                case.x,
-                g,
-                case.world,
-                color=OK_C if visible else BAD_C,
-                lw=1.8,
-                ls="-" if visible else "--",
-                zorder=6,
-            )
+            _seg(ax, case.x, g, case.world,
+                 color=OK_C if visible else BAD_C, lw=1.8,
+                 ls="-" if visible else "--", zorder=6)
             x, y, z = _xyz(g, case.world)
             ax.scatter([x], [y], [z], c=GUARD_C, s=42, depthshade=False, zorder=7)
             ax.text(x, y, z, f" g{gid}", fontsize=7, color=GUARD_C)
         x, y, z = _xyz(case.x, case.world)
-        ax.scatter(
-            [x], [y], [z], c=CONN_C, s=46, marker="D", depthshade=False, zorder=8
-        )
+        ax.scatter([x], [y], [z], c=CONN_C, s=46, marker="D",
+                   depthshade=False, zorder=8)
         ax.text(x, y, z, " x", fontsize=7, color=CONN_C)
         _autoscale(ax, case.world, states, t_max)
-    fig.suptitle(
-        "stage visible - visible_guards: green = guard visible from x, "
-        "red dashed = not visible",
-        fontsize=11,
-    )
+    fig.suptitle("stage visible - visible_guards: green = guard visible from x, "
+                 "red dashed = not visible", fontsize=11)
     fig.tight_layout(rect=(0, 0, 1, 0.95))
     _save(fig, out_dir, "cases_visible.png")
 
@@ -338,43 +283,24 @@ def plot_add(out_dir: Path) -> None:
     for n, case in enumerate(cases, start=1):
         graph, fates = _inject(case)
         stats = graph.stats()
-        ok = (
-            stats["guards"] == case.expected_guards
-            and stats["connectors"] == case.expected_connectors
-        )
+        ok = (stats["guards"] == case.expected_guards
+              and stats["connectors"] == case.expected_connectors)
         states = [*case.samples, case_data.START, case_data.GOAL, *case.extra_guards]
         t_max = max(s.t for s in states)
-        ax = _ax3d(
-            fig,
-            3,
-            3,
-            n,
-            f"{n}. {case.name}\nguards {stats['guards']}/{case.expected_guards}  "
-            f"conn {stats['connectors']}/{case.expected_connectors} [{_mark(ok)}]",
-        )
+        ax = _ax3d(fig, 3, 3, n,
+                   f"{n}. {case.name}\nguards {stats['guards']}/{case.expected_guards}  "
+                   f"conn {stats['connectors']}/{case.expected_connectors} [{_mark(ok)}]")
         _draw_obstacles(ax, case.world, t_max)
         _draw_graph(ax, graph, case.world)
         for order, (sample, fate) in enumerate(fates, start=1):
             colour, marker = _FATE_STYLE[fate]
             x, y, z = _xyz(sample, case.world)
-            ax.scatter(
-                [x],
-                [y],
-                [z],
-                c=colour,
-                s=46,
-                marker=marker,
-                depthshade=False,
-                zorder=9,
-                linewidths=1.4,
-            )
+            ax.scatter([x], [y], [z], c=colour, s=46, marker=marker,
+                       depthshade=False, zorder=9, linewidths=1.4)
             ax.text(x, y, z, f" #{order} {fate}", fontsize=6, color=colour)
         _autoscale(ax, case.world, states, t_max)
-    fig.suptitle(
-        "stage add - try_add_sample: fate of every injected sample "
-        "(#k = injection order)",
-        fontsize=11,
-    )
+    fig.suptitle("stage add - try_add_sample: fate of every injected sample "
+                 "(#k = injection order)", fontsize=11)
     fig.tight_layout(rect=(0, 0, 1, 0.96))
     _save(fig, out_dir, "cases_add.png")
 
@@ -400,35 +326,19 @@ def plot_dfs(out_dir: Path) -> None:
         ok = got == sorted(case.expected_paths)
         states = [graph.state(i) for i in graph.nodes]
         t_max = max([s.t for s in states] + [0.5])
-        ax = _ax3d(
-            fig,
-            2,
-            3,
-            n,
-            f"{n}. {case.name}\nexpect {len(case.expected_paths)} path(s), "
-            f"got {len(got)} [{_mark(ok)}]",
-        )
+        ax = _ax3d(fig, 2, 3, n,
+                   f"{n}. {case.name}\nexpect {len(case.expected_paths)} path(s), "
+                   f"got {len(got)} [{_mark(ok)}]")
         _draw_graph(ax, graph, world)
         for k, path in enumerate(got):
             pts = np.array([_xyz(graph.state(i), world) for i in path])
-            ax.plot(
-                pts[:, 0],
-                pts[:, 1],
-                pts[:, 2],
-                color=PALETTE[k % len(PALETTE)],
-                lw=2.6,
-                alpha=0.85,
-                zorder=6,
-                label=str(list(path)),
-            )
+            ax.plot(pts[:, 0], pts[:, 1], pts[:, 2], color=PALETTE[k % len(PALETTE)],
+                    lw=2.6, alpha=0.85, zorder=6, label=str(list(path)))
         if got:
             ax.legend(fontsize=6, loc="upper left")
         _autoscale(ax, world, states, t_max)
-    fig.suptitle(
-        "stage dfs - enumerate_paths: coloured lines are the enumerated "
-        "start->goal paths (time must strictly increase)",
-        fontsize=11,
-    )
+    fig.suptitle("stage dfs - enumerate_paths: coloured lines are the enumerated "
+                 "start->goal paths (time must strictly increase)", fontsize=11)
     fig.tight_layout(rect=(0, 0, 1, 0.94))
     _save(fig, out_dir, "cases_dfs.png")
 
@@ -444,62 +354,40 @@ def plot_topology(out_dir: Path, seed: int = 0) -> None:
     for n, sc in enumerate(scenarios, start=1):
         rng = np.random.default_rng(seed)
         try:
-            graph = exercise2.build_prm(
-                sc.world, sc.start, sc.goal, sc.num_samples, rng
-            )
+            graph = exercise2.build_prm(sc.world, sc.start, sc.goal,
+                                        sc.num_samples, rng)
             paths = exercise2.enumerate_paths(graph)
             taus = exercise2.distinct_trajectories(paths, graph, sc.world)
         except NotImplementedError:
             graph, paths, taus = Graph(sc.world), [], []
         expect = "n/a" if sc.expected_classes is None else str(sc.expected_classes)
         ok = sc.expected_classes is None or len(taus) == sc.expected_classes
-        ax = _ax3d(
-            fig,
-            2,
-            3,
-            n,
-            f"{n}. {sc.name}\n{len(paths)} paths -> {len(taus)} classes "
-            f"(expect {expect}) [{_mark(ok)}]",
-            compact=False,
-        )
+        ax = _ax3d(fig, 2, 3, n,
+                   f"{n}. {sc.name}\n{len(paths)} paths -> {len(taus)} classes "
+                   f"(expect {expect}) [{_mark(ok)}]",
+                   compact=False)
         _draw_obstacles(ax, sc.world, sc.goal.t)
         _draw_graph(ax, graph, sc.world, labels=False)
         for k, tau in enumerate(taus):
             pts = np.array([_xyz(tau.at(i / 120), sc.world) for i in range(121)])
-            ax.plot(
-                pts[:, 0],
-                pts[:, 1],
-                pts[:, 2],
-                color=PALETTE[k % len(PALETTE)],
-                lw=3.0,
-                zorder=8,
-            )
+            ax.plot(pts[:, 0], pts[:, 1], pts[:, 2],
+                    color=PALETTE[k % len(PALETTE)], lw=3.0, zorder=8)
         _autoscale(ax, sc.world, [sc.start, sc.goal], sc.goal.t)
-    fig.suptitle(
-        f"stage topology - end to end (seed={seed}): thick coloured lines "
-        "are the distinct topology classes",
-        fontsize=11,
-    )
+    fig.suptitle(f"stage topology - end to end (seed={seed}): thick coloured lines "
+                 "are the distinct topology classes", fontsize=11)
     fig.tight_layout(rect=(0, 0, 1, 0.95))
     _save(fig, out_dir, "cases_topology.png")
 
 
-STAGES = {
-    "edge": plot_edge,
-    "sample": plot_sample,
-    "visible": plot_visible,
-    "add": plot_add,
-    "dfs": plot_dfs,
-    "topology": plot_topology,
-}
+STAGES = {"edge": plot_edge, "sample": plot_sample, "visible": plot_visible,
+          "add": plot_add, "dfs": plot_dfs, "topology": plot_topology}
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="把 check2.py 的用例画出来")
     parser.add_argument("--stage", choices=[*STAGES, "all"], default="all")
-    parser.add_argument(
-        "--out", type=Path, default=Path(__file__).resolve().parent / "figures"
-    )
+    parser.add_argument("--out", type=Path,
+                        default=Path(__file__).resolve().parent / "figures")
     parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()
 
